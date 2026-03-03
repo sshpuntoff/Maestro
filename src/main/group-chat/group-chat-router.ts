@@ -29,6 +29,8 @@ import {
 	isModeratorActive,
 	getModeratorSystemPrompt,
 	getModeratorSynthesisPrompt,
+	getModeratorAutoRunSystemPrompt,
+	getModeratorAutoRunSynthesisPrompt,
 } from './group-chat-moderator';
 import { addParticipant } from './group-chat-agent';
 import { AgentDetector } from '../agents';
@@ -108,6 +110,32 @@ const pendingParticipantResponses = new Map<string, Set<string>>();
  * Maps groupChatId -> boolean
  */
 const groupChatReadOnlyState = new Map<string, boolean>();
+
+/**
+ * Tracks whether the current moderator cycle is an Auto-Run task.
+ * When true, Auto-Run-specific prompts are used for the moderator and synthesis.
+ * Cleared when the cycle completes (state transitions to idle).
+ * Maps groupChatId -> boolean
+ */
+const autoRunTaskActive = new Map<string, boolean>();
+
+/**
+ * Gets whether the current moderator cycle is an Auto-Run task.
+ */
+export function getAutoRunTaskActive(groupChatId: string): boolean {
+	return autoRunTaskActive.get(groupChatId) ?? false;
+}
+
+/**
+ * Sets whether the current moderator cycle is an Auto-Run task.
+ */
+export function setAutoRunTaskActive(groupChatId: string, active: boolean): void {
+	if (active) {
+		autoRunTaskActive.set(groupChatId, true);
+	} else {
+		autoRunTaskActive.delete(groupChatId);
+	}
+}
 
 /**
  * Gets the current read-only state for a group chat.
@@ -251,20 +279,26 @@ export function extractAllMentions(text: string): string[] {
  * @param processManager - The process manager (optional)
  * @param agentDetector - The agent detector for resolving agent commands (optional)
  * @param readOnly - Optional flag indicating read-only mode
+ * @param isAutoRunTask - Optional flag indicating this is an Auto-Run task; uses Auto-Run prompts
  */
 export async function routeUserMessage(
 	groupChatId: string,
 	message: string,
 	processManager?: IProcessManager,
 	agentDetector?: AgentDetector,
-	readOnly?: boolean
+	readOnly?: boolean,
+	isAutoRunTask?: boolean
 ): Promise<void> {
 	console.log(`[GroupChat:Debug] ========== ROUTE USER MESSAGE ==========`);
 	console.log(`[GroupChat:Debug] Group Chat ID: ${groupChatId}`);
 	console.log(`[GroupChat:Debug] Message length: ${message.length}`);
 	console.log(`[GroupChat:Debug] Read-only: ${readOnly ?? false}`);
+	console.log(`[GroupChat:Debug] Auto-Run task: ${isAutoRunTask ?? false}`);
 	console.log(`[GroupChat:Debug] Has processManager: ${!!processManager}`);
 	console.log(`[GroupChat:Debug] Has agentDetector: ${!!agentDetector}`);
+
+	// Track Auto-Run task state for this chat so synthesis uses the correct prompts
+	setAutoRunTaskActive(groupChatId, isAutoRunTask ?? false);
 
 	let chat = await loadGroupChat(groupChatId);
 	if (!chat) {
@@ -444,7 +478,12 @@ export async function routeUserMessage(
 				.map((m) => `[${m.from}]: ${m.content}`)
 				.join('\n');
 
-			const fullPrompt = `${getModeratorSystemPrompt()}
+			// Use Auto-Run prompts when processing an Auto-Run task
+			const systemPrompt = isAutoRunTask
+				? getModeratorAutoRunSystemPrompt()
+				: getModeratorSystemPrompt();
+
+			const fullPrompt = `${systemPrompt}
 
 ## Current Participants:
 ${participantContext}${availableSessionsContext}
@@ -570,6 +609,7 @@ ${message}`;
 			} catch (error) {
 				logger.error(`Failed to spawn moderator for ${groupChatId}`, LOG_CONTEXT, { error });
 				captureException(error, { operation: 'groupChat:spawnModerator', groupChatId });
+				setAutoRunTaskActive(groupChatId, false);
 				groupChatEmitters.emitStateChange?.(groupChatId, 'idle');
 				// Remove power block reason on error since we're going idle
 				powerManager.removeBlockReason(`groupchat:${groupChatId}`);
@@ -979,7 +1019,8 @@ export async function routeModeratorResponse(
 		console.log(`[GroupChat:Debug] =================================================`);
 	} else if (mentions.length === 0) {
 		console.log(`[GroupChat:Debug] No participant @mentions found - moderator response is final`);
-		// Set state back to idle since no agents are being spawned
+		// Clear Auto-Run task flag and set state back to idle since no agents are being spawned
+		setAutoRunTaskActive(groupChatId, false);
 		groupChatEmitters.emitStateChange?.(groupChatId, 'idle');
 		console.log(`[GroupChat:Debug] Emitted state change: idle`);
 		// Remove power block reason since round is complete
@@ -1139,7 +1180,8 @@ export async function spawnModeratorSynthesis(
 	const chat = await loadGroupChat(groupChatId);
 	if (!chat) {
 		logger.error(`Cannot spawn synthesis - chat not found: ${groupChatId}`, LOG_CONTEXT);
-		// Reset UI state and remove power block on early return
+		// Reset UI state, clear Auto-Run flag, and remove power block on early return
+		setAutoRunTaskActive(groupChatId, false);
 		groupChatEmitters.emitStateChange?.(groupChatId, 'idle');
 		powerManager.removeBlockReason(`groupchat:${groupChatId}`);
 		return;
@@ -1149,7 +1191,8 @@ export async function spawnModeratorSynthesis(
 
 	if (!isModeratorActive(groupChatId)) {
 		logger.error(`Cannot spawn synthesis - moderator not active for: ${groupChatId}`, LOG_CONTEXT);
-		// Reset UI state and remove power block on early return
+		// Reset UI state, clear Auto-Run flag, and remove power block on early return
+		setAutoRunTaskActive(groupChatId, false);
 		groupChatEmitters.emitStateChange?.(groupChatId, 'idle');
 		powerManager.removeBlockReason(`groupchat:${groupChatId}`);
 		return;
@@ -1163,7 +1206,8 @@ export async function spawnModeratorSynthesis(
 			`Cannot spawn synthesis - no moderator session ID for: ${groupChatId}`,
 			LOG_CONTEXT
 		);
-		// Reset UI state and remove power block on early return
+		// Reset UI state, clear Auto-Run flag, and remove power block on early return
+		setAutoRunTaskActive(groupChatId, false);
 		groupChatEmitters.emitStateChange?.(groupChatId, 'idle');
 		powerManager.removeBlockReason(`groupchat:${groupChatId}`);
 		return;
@@ -1184,7 +1228,8 @@ export async function spawnModeratorSynthesis(
 
 	if (!agent || !agent.available) {
 		logger.error(`Agent '${chat.moderatorAgentId}' is not available for synthesis`, LOG_CONTEXT);
-		// Reset UI state and remove power block on early return
+		// Reset UI state, clear Auto-Run flag, and remove power block on early return
+		setAutoRunTaskActive(groupChatId, false);
 		groupChatEmitters.emitStateChange?.(groupChatId, 'idle');
 		powerManager.removeBlockReason(`groupchat:${groupChatId}`);
 		return;
@@ -1213,9 +1258,18 @@ export async function spawnModeratorSynthesis(
 					.join('\n')
 			: '(No agents currently in this group chat)';
 
-	const synthesisPrompt = `${getModeratorSystemPrompt()}
+	// Use Auto-Run prompts when the current cycle is an Auto-Run task
+	const isAutoRun = getAutoRunTaskActive(groupChatId);
+	const systemPrompt = isAutoRun
+		? getModeratorAutoRunSystemPrompt()
+		: getModeratorSystemPrompt();
+	const synthesisBasePrompt = isAutoRun
+		? getModeratorAutoRunSynthesisPrompt()
+		: getModeratorSynthesisPrompt();
 
-${getModeratorSynthesisPrompt()}
+	const synthesisPrompt = `${systemPrompt}
+
+${synthesisBasePrompt}
 
 ## Current Participants (you can @mention these for follow-up):
 ${participantContext}
@@ -1290,6 +1344,7 @@ Review the agent responses above. Either:
 	} catch (error) {
 		logger.error(`Failed to spawn moderator synthesis for ${groupChatId}`, LOG_CONTEXT, { error });
 		captureException(error, { operation: 'groupChat:spawnSynthesis', groupChatId });
+		setAutoRunTaskActive(groupChatId, false);
 		groupChatEmitters.emitStateChange?.(groupChatId, 'idle');
 		// Remove power block reason on synthesis error since we're going idle
 		powerManager.removeBlockReason(`groupchat:${groupChatId}`);

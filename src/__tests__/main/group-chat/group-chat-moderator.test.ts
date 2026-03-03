@@ -49,6 +49,8 @@ import {
 	getModeratorSessionId,
 	clearAllModeratorSessions,
 	getModeratorSystemPrompt,
+	getModeratorAutoRunSystemPrompt,
+	getModeratorAutoRunSynthesisPrompt,
 	type IProcessManager,
 } from '../../../main/group-chat/group-chat-moderator';
 import {
@@ -316,6 +318,31 @@ describe('group-chat-moderator', () => {
 
 			expect(getModeratorSessionId(chat1.id)).toBeUndefined();
 			expect(getModeratorSessionId(chat2.id)).toBeUndefined();
+		});
+	});
+
+	// ===========================================================================
+	// Auto-Run prompt getter functions
+	// ===========================================================================
+	describe('Auto-Run prompt getters', () => {
+		it('getModeratorAutoRunSystemPrompt returns Auto-Run system prompt', () => {
+			const prompt = getModeratorAutoRunSystemPrompt();
+			expect(prompt).toBeTruthy();
+			expect(prompt).toContain('Auto-Run');
+			expect(prompt).toContain('@');
+		});
+
+		it('getModeratorAutoRunSynthesisPrompt returns Auto-Run synthesis prompt', () => {
+			const prompt = getModeratorAutoRunSynthesisPrompt();
+			expect(prompt).toBeTruthy();
+			expect(prompt).toContain('Task complete:');
+			expect(prompt).toContain('Task incomplete:');
+		});
+
+		it('Auto-Run prompts differ from regular prompts', () => {
+			const regularSystem = getModeratorSystemPrompt();
+			const autoRunSystem = getModeratorAutoRunSystemPrompt();
+			expect(regularSystem).not.toBe(autoRunSystem);
 		});
 	});
 });

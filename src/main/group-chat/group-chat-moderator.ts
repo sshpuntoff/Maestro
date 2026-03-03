@@ -11,7 +11,12 @@
 import * as os from 'os';
 import { GroupChat, loadGroupChat, updateGroupChat } from './group-chat-storage';
 import { appendToLog, readLog } from './group-chat-log';
-import { groupChatModeratorSystemPrompt, groupChatModeratorSynthesisPrompt } from '../../prompts';
+import {
+	groupChatModeratorSystemPrompt,
+	groupChatModeratorSynthesisPrompt,
+	groupChatModeratorAutorunSystemPrompt,
+	groupChatModeratorAutorunSynthesisPrompt,
+} from '../../prompts';
 import { powerManager } from '../power-manager';
 
 /**
@@ -136,6 +141,26 @@ export function getModeratorSystemPrompt(): string {
  */
 export function getModeratorSynthesisPrompt(): string {
 	return groupChatModeratorSynthesisPrompt;
+}
+
+/**
+ * Gets the Auto-Run system prompt for the moderator.
+ * Used when the moderator is processing tasks from an Auto-Run document.
+ * Focuses on task completion rather than conversation.
+ * Loaded from src/prompts/group-chat-moderator-autorun-system.md
+ */
+export function getModeratorAutoRunSystemPrompt(): string {
+	return groupChatModeratorAutorunSystemPrompt;
+}
+
+/**
+ * Gets the Auto-Run synthesis prompt for the moderator.
+ * Used during synthesis when processing Auto-Run tasks.
+ * Outputs "Task complete:" or "Task incomplete:" prefix for renderer detection.
+ * Loaded from src/prompts/group-chat-moderator-autorun-synthesis.md
+ */
+export function getModeratorAutoRunSynthesisPrompt(): string {
+	return groupChatModeratorAutorunSynthesisPrompt;
 }
 
 /**

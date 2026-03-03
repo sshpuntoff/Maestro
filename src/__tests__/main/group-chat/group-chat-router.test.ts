@@ -52,6 +52,7 @@ import {
 	routeModeratorResponse,
 	routeAgentResponse,
 	getGroupChatReadOnlyState,
+	getAutoRunTaskActive,
 	setGetSessionsCallback,
 	setSshStore,
 	type SessionInfo,
@@ -698,6 +699,138 @@ describe('group-chat-router', () => {
 			);
 			expect(participantSpawnCall).toBeDefined();
 			expect(participantSpawnCall?.[0].readOnlyMode).toBe(false);
+		});
+	});
+
+	// ===========================================================================
+	// Test 5.8: Auto-Run task prompt selection
+	// ===========================================================================
+	describe('Auto-Run task prompt selection', () => {
+		it('uses Auto-Run prompt when isAutoRunTask is true', async () => {
+			const chat = await createTestChatWithModerator('AutoRun Prompt Test');
+
+			await routeUserMessage(
+				chat.id,
+				'Implement login form',
+				mockProcessManager,
+				mockAgentDetector,
+				false,
+				true // isAutoRunTask
+			);
+
+			// Prompt should contain Auto-Run-specific content
+			expect(mockProcessManager.spawn).toHaveBeenCalledWith(
+				expect.objectContaining({
+					prompt: expect.stringContaining('Auto-Run'),
+				})
+			);
+		});
+
+		it('uses regular prompt when isAutoRunTask is false', async () => {
+			const chat = await createTestChatWithModerator('Regular Prompt Test');
+
+			await routeUserMessage(
+				chat.id,
+				'Help me build a feature',
+				mockProcessManager,
+				mockAgentDetector,
+				false,
+				false
+			);
+
+			// Prompt should contain regular moderator content, not Auto-Run
+			const spawnCall = mockProcessManager.spawn.mock.calls.find((call) =>
+				call[0].prompt?.includes('Help me build a feature')
+			);
+			expect(spawnCall).toBeDefined();
+			expect(spawnCall?.[0].prompt).not.toContain('Auto-Run');
+		});
+
+		it('uses regular prompt when isAutoRunTask is omitted', async () => {
+			const chat = await createTestChatWithModerator('Default Prompt Test');
+
+			await routeUserMessage(
+				chat.id,
+				'Default message',
+				mockProcessManager,
+				mockAgentDetector
+			);
+
+			const spawnCall = mockProcessManager.spawn.mock.calls.find((call) =>
+				call[0].prompt?.includes('Default message')
+			);
+			expect(spawnCall).toBeDefined();
+			expect(spawnCall?.[0].prompt).not.toContain('Auto-Run');
+		});
+
+		it('sets autoRunTaskActive state when isAutoRunTask is true', async () => {
+			const chat = await createTestChatWithModerator('AutoRun State Test');
+
+			// Initially false
+			expect(getAutoRunTaskActive(chat.id)).toBe(false);
+
+			await routeUserMessage(
+				chat.id,
+				'Auto-Run task',
+				mockProcessManager,
+				mockAgentDetector,
+				false,
+				true
+			);
+
+			expect(getAutoRunTaskActive(chat.id)).toBe(true);
+		});
+
+		it('clears autoRunTaskActive state when isAutoRunTask is false', async () => {
+			const chat = await createTestChatWithModerator('AutoRun Clear State Test');
+
+			// Set it to true first
+			await routeUserMessage(
+				chat.id,
+				'Auto-Run task',
+				mockProcessManager,
+				mockAgentDetector,
+				false,
+				true
+			);
+			expect(getAutoRunTaskActive(chat.id)).toBe(true);
+
+			// Send non-Auto-Run message — should clear
+			await routeUserMessage(
+				chat.id,
+				'Regular message',
+				mockProcessManager,
+				mockAgentDetector,
+				false,
+				false
+			);
+			expect(getAutoRunTaskActive(chat.id)).toBe(false);
+		});
+
+		it('clears autoRunTaskActive when moderator response has no mentions (idle)', async () => {
+			const chat = await createTestChatWithModerator('AutoRun Idle Clear Test');
+			await addParticipant(chat.id, 'Client', 'claude-code', mockProcessManager);
+
+			// Start an Auto-Run task
+			await routeUserMessage(
+				chat.id,
+				'Auto-Run task',
+				mockProcessManager,
+				mockAgentDetector,
+				false,
+				true
+			);
+			expect(getAutoRunTaskActive(chat.id)).toBe(true);
+
+			// Moderator responds without @mentions — final response, should go idle and clear flag
+			await routeModeratorResponse(
+				chat.id,
+				'Task complete: Login form implemented successfully.',
+				mockProcessManager,
+				mockAgentDetector
+			);
+
+			expect(getAutoRunTaskActive(chat.id)).toBe(false);
 		});
 	});
 
