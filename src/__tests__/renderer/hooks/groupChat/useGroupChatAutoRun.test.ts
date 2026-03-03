@@ -674,6 +674,142 @@ describe('useGroupChatAutoRun', () => {
 	});
 
 	// ==========================================================================
+	// activeGroupChatId change watcher
+	// ==========================================================================
+
+	describe('activeGroupChatId change watcher', () => {
+		it('stops Auto-Run when activeGroupChatId changes during a run', async () => {
+			const content = '- [ ] Task one\n- [ ] Task two';
+			mockReadDoc.mockResolvedValue({ success: true, content });
+			mockSendToModerator.mockResolvedValue(undefined);
+
+			// Set initial activeGroupChatId
+			useGroupChatStore.setState({ activeGroupChatId: 'gc-1' });
+
+			const hook = renderHook(() => useGroupChatAutoRun());
+
+			await act(async () => {
+				await hook.result.current.startAutoRun('gc-1', '/docs', 'tasks.md');
+			});
+
+			expect(useGroupChatStore.getState().groupChatAutoRunState.isRunning).toBe(true);
+
+			// Simulate switching to a different group chat
+			act(() => {
+				useGroupChatStore.setState({ activeGroupChatId: 'gc-2' });
+			});
+
+			const state = useGroupChatStore.getState().groupChatAutoRunState;
+			expect(state.isRunning).toBe(false);
+			expect(state.error).toBe('Auto Run stopped: group chat was closed or switched');
+			expect(state.currentTaskText).toBeNull();
+
+			expect(notifyToast).toHaveBeenCalledWith({
+				type: 'warning',
+				title: 'Group Chat Auto Run Stopped',
+				message: 'Auto Run stopped because the group chat was closed or switched',
+			});
+
+			hook.unmount();
+		});
+
+		it('stops Auto-Run when activeGroupChatId is set to null (chat closed)', async () => {
+			const content = '- [ ] Task one\n- [ ] Task two';
+			mockReadDoc.mockResolvedValue({ success: true, content });
+			mockSendToModerator.mockResolvedValue(undefined);
+
+			useGroupChatStore.setState({ activeGroupChatId: 'gc-1' });
+
+			const hook = renderHook(() => useGroupChatAutoRun());
+
+			await act(async () => {
+				await hook.result.current.startAutoRun('gc-1', '/docs', 'tasks.md');
+			});
+
+			expect(useGroupChatStore.getState().groupChatAutoRunState.isRunning).toBe(true);
+
+			// Simulate closing the group chat
+			act(() => {
+				useGroupChatStore.setState({ activeGroupChatId: null });
+			});
+
+			const state = useGroupChatStore.getState().groupChatAutoRunState;
+			expect(state.isRunning).toBe(false);
+			expect(state.error).toBe('Auto Run stopped: group chat was closed or switched');
+
+			hook.unmount();
+		});
+
+		it('does not stop when activeGroupChatId changes while Auto-Run is not running', async () => {
+			useGroupChatStore.setState({ activeGroupChatId: 'gc-1' });
+
+			const hook = renderHook(() => useGroupChatAutoRun());
+
+			// Change chat without starting Auto-Run
+			act(() => {
+				useGroupChatStore.setState({ activeGroupChatId: 'gc-2' });
+			});
+
+			// Should not have emitted a toast since Auto-Run was not running
+			expect(notifyToast).not.toHaveBeenCalled();
+
+			hook.unmount();
+		});
+
+		it('removes power lock when stopping due to chat change', async () => {
+			const content = '- [ ] Task one\n- [ ] Task two';
+			mockReadDoc.mockResolvedValue({ success: true, content });
+			mockSendToModerator.mockResolvedValue(undefined);
+
+			useGroupChatStore.setState({ activeGroupChatId: 'gc-1' });
+
+			const hook = renderHook(() => useGroupChatAutoRun());
+
+			await act(async () => {
+				await hook.result.current.startAutoRun('gc-1', '/docs', 'tasks.md');
+			});
+
+			mockRemoveReason.mockClear();
+
+			act(() => {
+				useGroupChatStore.setState({ activeGroupChatId: 'gc-2' });
+			});
+
+			expect(mockRemoveReason).toHaveBeenCalledWith('groupchat-autorun');
+
+			hook.unmount();
+		});
+
+		it('does not react when activeGroupChatId is set to the same value', async () => {
+			const content = '- [ ] Task one\n- [ ] Task two';
+			mockReadDoc.mockResolvedValue({ success: true, content });
+			mockSendToModerator.mockResolvedValue(undefined);
+
+			useGroupChatStore.setState({ activeGroupChatId: 'gc-1' });
+
+			const hook = renderHook(() => useGroupChatAutoRun());
+
+			await act(async () => {
+				await hook.result.current.startAutoRun('gc-1', '/docs', 'tasks.md');
+			});
+
+			vi.mocked(notifyToast).mockClear();
+
+			// Set the same activeGroupChatId — should NOT trigger stop
+			act(() => {
+				useGroupChatStore.setState({ activeGroupChatId: 'gc-1' });
+			});
+
+			expect(useGroupChatStore.getState().groupChatAutoRunState.isRunning).toBe(true);
+			expect(notifyToast).not.toHaveBeenCalledWith(
+				expect.objectContaining({ title: 'Group Chat Auto Run Stopped' })
+			);
+
+			hook.unmount();
+		});
+	});
+
+	// ==========================================================================
 	// processNextTask (via run completion)
 	// ==========================================================================
 

@@ -474,6 +474,77 @@ describe('GroupChatAutoRunTab', () => {
 			});
 		});
 
+		it('shows dismiss button alongside retry button on error', async () => {
+			useGroupChatStore.setState({
+				groupChatAutoRunState: {
+					isRunning: false,
+					folderPath: '/test/folder',
+					selectedFile: 'tasks',
+					totalTasks: 0,
+					completedTasks: 0,
+					currentTaskText: null,
+					error: 'Something went wrong',
+				},
+			});
+
+			mockGroupChat.getAutoRunConfig.mockResolvedValue({
+				folderPath: '/test/folder',
+				selectedFile: 'tasks',
+			});
+
+			render(<GroupChatAutoRunTab theme={mockTheme} groupChatId="gc-1" startAutoRun={mockStartAutoRun} stopAutoRun={mockStopAutoRun} />);
+
+			await waitFor(() => {
+				expect(screen.getByText('Retry')).toBeTruthy();
+				expect(screen.getByText('Dismiss')).toBeTruthy();
+			});
+		});
+
+		it('clears error without restarting on dismiss', async () => {
+			useGroupChatStore.setState({
+				groupChatAutoRunState: {
+					isRunning: false,
+					folderPath: '/test/folder',
+					selectedFile: 'tasks',
+					totalTasks: 0,
+					completedTasks: 0,
+					currentTaskText: null,
+					error: 'Something went wrong',
+				},
+			});
+
+			mockGroupChat.getAutoRunConfig.mockResolvedValue({
+				folderPath: '/test/folder',
+				selectedFile: 'tasks',
+			});
+
+			(window.maestro.autorun.listDocs as any).mockResolvedValue({
+				success: true,
+				files: ['tasks'],
+			});
+			(window.maestro.autorun.readDoc as any).mockResolvedValue({
+				success: true,
+				content: '- [ ] Task 1',
+			});
+
+			render(<GroupChatAutoRunTab theme={mockTheme} groupChatId="gc-1" startAutoRun={mockStartAutoRun} stopAutoRun={mockStopAutoRun} />);
+
+			await waitFor(() => {
+				expect(screen.getByText('Dismiss')).toBeTruthy();
+			});
+
+			await act(async () => {
+				fireEvent.click(screen.getByText('Dismiss'));
+			});
+
+			// Error should be cleared in the store
+			const state = useGroupChatStore.getState().groupChatAutoRunState;
+			expect(state.error).toBeNull();
+
+			// Should NOT have called startAutoRun
+			expect(mockStartAutoRun).not.toHaveBeenCalled();
+		});
+
 		it('clears error and restarts on retry', async () => {
 			useGroupChatStore.setState({
 				groupChatAutoRunState: {

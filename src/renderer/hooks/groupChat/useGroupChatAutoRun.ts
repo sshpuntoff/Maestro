@@ -360,6 +360,43 @@ export function useGroupChatAutoRun(): UseGroupChatAutoRunReturn {
 	}, [removePowerLock, stopTimeoutChecker]);
 
 	/**
+	 * Active group chat change watcher: if the user switches to a different
+	 * group chat (or closes it) while Auto-Run is active, stop gracefully.
+	 */
+	useEffect(() => {
+		const unsubscribe = useGroupChatStore.subscribe((state, prevState) => {
+			// Only react when activeGroupChatId actually changes
+			if (state.activeGroupChatId === prevState.activeGroupChatId) return;
+			if (!state.groupChatAutoRunState.isRunning) return;
+			if (stoppedRef.current) return;
+
+			// Stop Auto-Run gracefully — chat context has changed
+			stoppedRef.current = true;
+			if (advanceTimerRef.current) {
+				clearTimeout(advanceTimerRef.current);
+				advanceTimerRef.current = null;
+			}
+			removePowerLock();
+			stopTimeoutChecker();
+
+			state.setGroupChatAutoRunState({
+				isRunning: false,
+				error: 'Auto Run stopped: group chat was closed or switched',
+				currentTaskText: null,
+			});
+			notifyToast({
+				type: 'warning',
+				title: 'Group Chat Auto Run Stopped',
+				message: 'Auto Run stopped because the group chat was closed or switched',
+			});
+		});
+
+		return () => {
+			unsubscribe();
+		};
+	}, [removePowerLock, stopTimeoutChecker]);
+
+	/**
 	 * Start Auto-Run: read the document, count tasks, and kick off the first task.
 	 */
 	const startAutoRun = useCallback(async (groupChatId: string, folderPath: string, filename: string) => {

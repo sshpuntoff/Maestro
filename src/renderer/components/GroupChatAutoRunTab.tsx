@@ -185,6 +185,12 @@ export function GroupChatAutoRunTab({ theme, groupChatId, startAutoRun, stopAuto
 		}
 	}, [folderPath, selectedFile, handleStart]);
 
+	// Handle dismiss error (clear error without retrying)
+	const handleDismissError = useCallback(() => {
+		const { setGroupChatAutoRunState } = useGroupChatStore.getState();
+		setGroupChatAutoRunState({ error: null });
+	}, []);
+
 	// ========================================================================
 	// Render: No folder configured — empty state
 	// ========================================================================
@@ -453,16 +459,29 @@ export function GroupChatAutoRunTab({ theme, groupChatId, startAutoRun, stopAuto
 						>
 							{error}
 						</div>
-						<button
-							onClick={handleRetry}
-							className="text-xs mt-1.5 px-2 py-1 rounded transition-colors hover:opacity-80"
-							style={{
-								backgroundColor: theme.colors.error,
-								color: '#fff',
-							}}
-						>
-							Retry
-						</button>
+						<div className="flex items-center gap-2 mt-1.5">
+							<button
+								onClick={handleRetry}
+								className="text-xs px-2 py-1 rounded transition-colors hover:opacity-80"
+								style={{
+									backgroundColor: theme.colors.error,
+									color: '#fff',
+								}}
+							>
+								Retry
+							</button>
+							<button
+								onClick={handleDismissError}
+								className="text-xs px-2 py-1 rounded transition-colors hover:opacity-80"
+								style={{
+									backgroundColor: theme.colors.bgActivity,
+									color: theme.colors.textDim,
+									border: `1px solid ${theme.colors.border}`,
+								}}
+							>
+								Dismiss
+							</button>
+						</div>
 					</div>
 				</div>
 			)}
