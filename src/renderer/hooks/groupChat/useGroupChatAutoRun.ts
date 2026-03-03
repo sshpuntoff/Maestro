@@ -20,6 +20,12 @@ const FIRST_UNCHECKED_REGEX = /^[\s]*[-*]\s*\[\s*\]\s*(.+)$/m;
 // Delay between task completion and next task processing (ms)
 const TASK_ADVANCE_DELAY_MS = 500;
 
+// Power management reason identifier for preventing system sleep
+const POWER_REASON = 'groupchat-autorun';
+
+// Timeout (ms) — stop Auto-Run if no progress after 10 minutes
+const AUTORUN_TIMEOUT_MS = 10 * 60 * 1000;
+
 /**
  * Extract the text of the first unchecked task from markdown content.
  * Returns null if no unchecked tasks remain.
@@ -74,6 +80,62 @@ export function useGroupChatAutoRun(): UseGroupChatAutoRunReturn {
 	const stoppedRef = useRef(false);
 	const groupChatIdRef = useRef<string | null>(null);
 	const advanceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+	const lastProgressTimestampRef = useRef<number>(0);
+	const timeoutTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+	/**
+	 * Remove the power management lock. Safe to call multiple times.
+	 */
+	const removePowerLock = useCallback(() => {
+		window.maestro.power.removeReason(POWER_REASON).catch(() => {});
+	}, []);
+
+	/**
+	 * Stop the timeout checker interval.
+	 */
+	const stopTimeoutChecker = useCallback(() => {
+		if (timeoutTimerRef.current) {
+			clearInterval(timeoutTimerRef.current);
+			timeoutTimerRef.current = null;
+		}
+	}, []);
+
+	/**
+	 * Start a periodic timeout checker that stops Auto-Run if no progress
+	 * has been made within AUTORUN_TIMEOUT_MS.
+	 */
+	const startTimeoutChecker = useCallback(() => {
+		stopTimeoutChecker();
+		lastProgressTimestampRef.current = Date.now();
+		timeoutTimerRef.current = setInterval(() => {
+			if (stoppedRef.current) {
+				stopTimeoutChecker();
+				return;
+			}
+			const elapsed = Date.now() - lastProgressTimestampRef.current;
+			if (elapsed >= AUTORUN_TIMEOUT_MS) {
+				// Timeout — stop Auto-Run
+				stoppedRef.current = true;
+				if (advanceTimerRef.current) {
+					clearTimeout(advanceTimerRef.current);
+					advanceTimerRef.current = null;
+				}
+				stopTimeoutChecker();
+				removePowerLock();
+				const { setGroupChatAutoRunState } = useGroupChatStore.getState();
+				setGroupChatAutoRunState({
+					isRunning: false,
+					error: 'Auto Run timed out after 10 minutes with no progress',
+					currentTaskText: null,
+				});
+				notifyToast({
+					type: 'error',
+					title: 'Group Chat Auto Run Timeout',
+					message: 'Auto Run timed out after 10 minutes with no progress',
+				});
+			}
+		}, 30_000); // Check every 30 seconds
+	}, [removePowerLock, stopTimeoutChecker]);
 
 	/**
 	 * Process the next unchecked task from the document.
@@ -92,6 +154,8 @@ export function useGroupChatAutoRun(): UseGroupChatAutoRunReturn {
 			if (stoppedRef.current) return;
 			const message = err instanceof Error ? err.message : 'Failed to read document';
 			setGroupChatAutoRunState({ isRunning: false, error: message, currentTaskText: null });
+			removePowerLock();
+			stopTimeoutChecker();
 			notifyToast({ type: 'error', title: 'Group Chat Auto Run Error', message });
 			return;
 		}
@@ -99,6 +163,8 @@ export function useGroupChatAutoRun(): UseGroupChatAutoRunReturn {
 			if (stoppedRef.current) return;
 			const message = result.error || 'Failed to read document';
 			setGroupChatAutoRunState({ isRunning: false, error: message, currentTaskText: null });
+			removePowerLock();
+			stopTimeoutChecker();
 			notifyToast({ type: 'error', title: 'Group Chat Auto Run Error', message });
 			return;
 		}
@@ -116,6 +182,8 @@ export function useGroupChatAutoRun(): UseGroupChatAutoRunReturn {
 				totalTasks: total,
 				completedTasks: completed,
 			});
+			removePowerLock();
+			stopTimeoutChecker();
 			return;
 		}
 
@@ -133,13 +201,17 @@ export function useGroupChatAutoRun(): UseGroupChatAutoRunReturn {
 		// Send task to moderator with Auto-Run flag so router uses Auto-Run prompts
 		try {
 			await window.maestro.groupChat.sendToModerator(groupChatId, taskText, undefined, undefined, { isAutoRunTask: true });
+			// Update progress timestamp on successful task send
+			lastProgressTimestampRef.current = Date.now();
 		} catch (err) {
 			if (stoppedRef.current) return;
 			const message = err instanceof Error ? err.message : 'Failed to send task to moderator';
 			setGroupChatAutoRunState({ isRunning: false, error: message, currentTaskText: null });
+			removePowerLock();
+			stopTimeoutChecker();
 			notifyToast({ type: 'error', title: 'Group Chat Auto Run Error', message });
 		}
-	}, []);
+	}, [removePowerLock, stopTimeoutChecker]);
 
 	/**
 	 * Handle the idle-state transition for task advancement.
@@ -165,6 +237,8 @@ export function useGroupChatAutoRun(): UseGroupChatAutoRunReturn {
 				if (stoppedRef.current) return;
 				const message = result.error || 'Failed to read document during advancement';
 				setGroupChatAutoRunState({ isRunning: false, error: message, currentTaskText: null });
+				removePowerLock();
+				stopTimeoutChecker();
 				notifyToast({ type: 'error', title: 'Group Chat Auto Run Error', message });
 				return;
 			}
@@ -191,6 +265,9 @@ export function useGroupChatAutoRun(): UseGroupChatAutoRunReturn {
 					totalTasks: newTotal,
 					currentTaskText: null,
 				});
+
+				// Update progress timestamp — task was completed
+				lastProgressTimestampRef.current = Date.now();
 			} else {
 				// Task incomplete — clear task text but don't increment completed count
 				setGroupChatAutoRunState({
@@ -210,9 +287,11 @@ export function useGroupChatAutoRun(): UseGroupChatAutoRunReturn {
 			if (stoppedRef.current) return;
 			const message = err instanceof Error ? err.message : 'Auto Run task advancement failed';
 			setGroupChatAutoRunState({ isRunning: false, error: message, currentTaskText: null });
+			removePowerLock();
+			stopTimeoutChecker();
 			notifyToast({ type: 'error', title: 'Group Chat Auto Run Error', message });
 		}
-	}, [processNextTask]);
+	}, [processNextTask, removePowerLock, stopTimeoutChecker]);
 
 	/**
 	 * Idle-state watcher: subscribes to store and detects transitions to 'idle'.
@@ -263,6 +342,8 @@ export function useGroupChatAutoRun(): UseGroupChatAutoRunReturn {
 				clearTimeout(advanceTimerRef.current);
 				advanceTimerRef.current = null;
 			}
+			removePowerLock();
+			stopTimeoutChecker();
 
 			const errorMessage = state.groupChatError.error?.message || 'Group chat error during Auto Run';
 			state.setGroupChatAutoRunState({
@@ -276,7 +357,7 @@ export function useGroupChatAutoRun(): UseGroupChatAutoRunReturn {
 		return () => {
 			unsubscribe();
 		};
-	}, []);
+	}, [removePowerLock, stopTimeoutChecker]);
 
 	/**
 	 * Start Auto-Run: read the document, count tasks, and kick off the first task.
@@ -328,6 +409,12 @@ export function useGroupChatAutoRun(): UseGroupChatAutoRunReturn {
 			error: null,
 		});
 
+		// Prevent system sleep while Auto-Run is active
+		window.maestro.power.addReason(POWER_REASON).catch(() => {});
+
+		// Start timeout checker
+		startTimeoutChecker();
+
 		// Kick off first task
 		try {
 			await processNextTask(groupChatId, folderPath, filename);
@@ -335,9 +422,11 @@ export function useGroupChatAutoRun(): UseGroupChatAutoRunReturn {
 			if (stoppedRef.current) return;
 			const message = err instanceof Error ? err.message : 'Failed to start Auto-Run';
 			setGroupChatAutoRunState({ isRunning: false, error: message, currentTaskText: null });
+			removePowerLock();
+			stopTimeoutChecker();
 			notifyToast({ type: 'error', title: 'Group Chat Auto Run Error', message });
 		}
-	}, [processNextTask]);
+	}, [processNextTask, removePowerLock, startTimeoutChecker, stopTimeoutChecker]);
 
 	/**
 	 * Stop Auto-Run gracefully.
@@ -348,12 +437,26 @@ export function useGroupChatAutoRun(): UseGroupChatAutoRunReturn {
 			clearTimeout(advanceTimerRef.current);
 			advanceTimerRef.current = null;
 		}
+		removePowerLock();
+		stopTimeoutChecker();
 		const { setGroupChatAutoRunState } = useGroupChatStore.getState();
 		setGroupChatAutoRunState({
 			isRunning: false,
 			currentTaskText: null,
 		});
-	}, []);
+	}, [removePowerLock, stopTimeoutChecker]);
+
+	/**
+	 * Cleanup: remove power lock and stop timeout checker on unmount.
+	 * Ensures system sleep is not blocked if the component unmounts
+	 * while Auto-Run is still active.
+	 */
+	useEffect(() => {
+		return () => {
+			removePowerLock();
+			stopTimeoutChecker();
+		};
+	}, [removePowerLock, stopTimeoutChecker]);
 
 	return { startAutoRun, stopAutoRun };
 }

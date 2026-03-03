@@ -34,12 +34,16 @@ import { useGroupChatStore } from '../../../../renderer/stores/groupChatStore';
 const mockReadDoc = vi.fn();
 const mockWriteDoc = vi.fn();
 const mockSendToModerator = vi.fn();
+const mockAddReason = vi.fn().mockResolvedValue(undefined);
+const mockRemoveReason = vi.fn().mockResolvedValue(undefined);
 
 beforeEach(() => {
 	// Reset call history AND implementation (mockOnce queues etc.)
 	mockReadDoc.mockReset();
 	mockWriteDoc.mockReset();
 	mockSendToModerator.mockReset();
+	mockAddReason.mockReset().mockResolvedValue(undefined);
+	mockRemoveReason.mockReset().mockResolvedValue(undefined);
 	vi.mocked(notifyToast).mockClear();
 
 	// Reset the Zustand store
@@ -68,6 +72,10 @@ beforeEach(() => {
 		groupChat: {
 			...(window as any).maestro?.groupChat,
 			sendToModerator: mockSendToModerator,
+		},
+		power: {
+			addReason: mockAddReason,
+			removeReason: mockRemoveReason,
 		},
 	};
 
@@ -1045,6 +1053,276 @@ describe('useGroupChatAutoRun', () => {
 			await vi.advanceTimersByTimeAsync(500);
 
 			expect(mockReadDoc).not.toHaveBeenCalled();
+		});
+	});
+
+	// ==========================================================================
+	// Power management
+	// ==========================================================================
+
+	describe('power management', () => {
+		it('calls addReason on start and removeReason on stop', async () => {
+			const content = `- [ ] Task one\n- [ ] Task two`;
+			mockReadDoc.mockResolvedValue({ success: true, content });
+			mockSendToModerator.mockResolvedValue(undefined);
+
+			const { result } = renderHook(() => useGroupChatAutoRun());
+
+			await act(async () => {
+				await result.current.startAutoRun('gc-1', '/docs', 'tasks.md');
+			});
+
+			expect(mockAddReason).toHaveBeenCalledWith('groupchat-autorun');
+
+			act(() => {
+				result.current.stopAutoRun();
+			});
+
+			expect(mockRemoveReason).toHaveBeenCalledWith('groupchat-autorun');
+		});
+
+		it('calls removeReason when all tasks complete', async () => {
+			mockReadDoc
+				.mockResolvedValueOnce({ success: true, content: '- [ ] Only task' })
+				.mockResolvedValueOnce({ success: true, content: '- [x] Only task' });
+			mockSendToModerator.mockResolvedValue(undefined);
+
+			const { result } = renderHook(() => useGroupChatAutoRun());
+
+			await act(async () => {
+				await result.current.startAutoRun('gc-1', '/docs', 'tasks.md');
+			});
+
+			expect(mockAddReason).toHaveBeenCalledWith('groupchat-autorun');
+			expect(mockRemoveReason).toHaveBeenCalledWith('groupchat-autorun');
+		});
+
+		it('calls removeReason on doc read error in startAutoRun', async () => {
+			// Note: power lock is added after state init, before processNextTask.
+			// If readDoc fails in startAutoRun (before state init), no power lock is added.
+			mockReadDoc.mockResolvedValue({ success: false, error: 'File not found' });
+
+			const { result } = renderHook(() => useGroupChatAutoRun());
+
+			await act(async () => {
+				await result.current.startAutoRun('gc-1', '/docs', 'missing.md');
+			});
+
+			// addReason should NOT have been called (failed before reaching that point)
+			expect(mockAddReason).not.toHaveBeenCalled();
+		});
+
+		it('calls removeReason on processNextTask error', async () => {
+			const content = `- [ ] Task one`;
+			mockReadDoc.mockResolvedValue({ success: true, content });
+			mockSendToModerator.mockRejectedValue(new Error('IPC failure'));
+
+			const { result } = renderHook(() => useGroupChatAutoRun());
+
+			await act(async () => {
+				await result.current.startAutoRun('gc-1', '/docs', 'tasks.md');
+			});
+
+			expect(mockAddReason).toHaveBeenCalledWith('groupchat-autorun');
+			expect(mockRemoveReason).toHaveBeenCalledWith('groupchat-autorun');
+		});
+
+		it('calls removeReason when groupChatError stops Auto-Run', async () => {
+			const content = '- [ ] Task one\n- [ ] Task two';
+			mockReadDoc.mockResolvedValue({ success: true, content });
+			mockSendToModerator.mockResolvedValue(undefined);
+
+			const hook = renderHook(() => useGroupChatAutoRun());
+
+			await act(async () => {
+				await hook.result.current.startAutoRun('gc-1', '/docs', 'tasks.md');
+			});
+
+			mockRemoveReason.mockClear();
+
+			act(() => {
+				useGroupChatStore.setState({
+					groupChatError: {
+						groupChatId: 'gc-1',
+						error: { type: 'process_error', message: 'Agent crashed', recoverable: false },
+						participantName: 'agent-1',
+					},
+				});
+			});
+
+			expect(mockRemoveReason).toHaveBeenCalledWith('groupchat-autorun');
+
+			hook.unmount();
+		});
+
+		it('calls removeReason on unmount during active Auto-Run', async () => {
+			const content = '- [ ] Task one\n- [ ] Task two';
+			mockReadDoc.mockResolvedValue({ success: true, content });
+			mockSendToModerator.mockResolvedValue(undefined);
+
+			const hook = renderHook(() => useGroupChatAutoRun());
+
+			await act(async () => {
+				await hook.result.current.startAutoRun('gc-1', '/docs', 'tasks.md');
+			});
+
+			mockRemoveReason.mockClear();
+
+			hook.unmount();
+
+			expect(mockRemoveReason).toHaveBeenCalledWith('groupchat-autorun');
+		});
+
+		it('calls removeReason on idle advancement error', async () => {
+			const content = '- [ ] Task one\n- [ ] Task two';
+			mockReadDoc.mockResolvedValue({ success: true, content });
+			mockSendToModerator.mockResolvedValue(undefined);
+
+			const hook = renderHook(() => useGroupChatAutoRun());
+
+			await act(async () => {
+				await hook.result.current.startAutoRun('gc-1', '/docs', 'tasks.md');
+			});
+
+			mockReadDoc.mockReset();
+			mockRemoveReason.mockClear();
+			vi.useFakeTimers();
+
+			mockReadDoc.mockResolvedValue({ success: false, error: 'Permission denied' });
+
+			useGroupChatStore.setState({
+				groupChatMessages: [
+					{ timestamp: '2024-01-01T00:01:00Z', from: 'moderator', content: 'Task complete: Done.' },
+				],
+			});
+
+			useGroupChatStore.setState({ groupChatState: 'moderator-thinking' });
+			useGroupChatStore.setState({ groupChatState: 'idle' });
+			await vi.advanceTimersByTimeAsync(0);
+
+			expect(mockRemoveReason).toHaveBeenCalledWith('groupchat-autorun');
+
+			hook.unmount();
+		});
+	});
+
+	// ==========================================================================
+	// Timeout
+	// ==========================================================================
+
+	describe('timeout', () => {
+		it('stops Auto-Run after 10 minutes with no progress', async () => {
+			vi.useFakeTimers();
+
+			const content = '- [ ] Task one\n- [ ] Task two';
+			mockReadDoc.mockResolvedValue({ success: true, content });
+			mockSendToModerator.mockResolvedValue(undefined);
+
+			const hook = renderHook(() => useGroupChatAutoRun());
+
+			await act(async () => {
+				await hook.result.current.startAutoRun('gc-1', '/docs', 'tasks.md');
+			});
+			// Flush microtasks from startAutoRun
+			await vi.advanceTimersByTimeAsync(0);
+
+			expect(useGroupChatStore.getState().groupChatAutoRunState.isRunning).toBe(true);
+
+			// Advance time by 10 minutes (the timeout checker runs every 30s)
+			await vi.advanceTimersByTimeAsync(10 * 60 * 1000);
+
+			const state = useGroupChatStore.getState().groupChatAutoRunState;
+			expect(state.isRunning).toBe(false);
+			expect(state.error).toBe('Auto Run timed out after 10 minutes with no progress');
+			expect(state.currentTaskText).toBeNull();
+
+			expect(notifyToast).toHaveBeenCalledWith({
+				type: 'error',
+				title: 'Group Chat Auto Run Timeout',
+				message: 'Auto Run timed out after 10 minutes with no progress',
+			});
+
+			expect(mockRemoveReason).toHaveBeenCalledWith('groupchat-autorun');
+
+			hook.unmount();
+		});
+
+		it('does not timeout if progress is made within 10 minutes', async () => {
+			vi.useFakeTimers();
+
+			const content = '- [ ] Task one\n- [ ] Task two';
+			mockReadDoc.mockResolvedValue({ success: true, content });
+			mockSendToModerator.mockResolvedValue(undefined);
+
+			const hook = renderHook(() => useGroupChatAutoRun());
+
+			await act(async () => {
+				await hook.result.current.startAutoRun('gc-1', '/docs', 'tasks.md');
+			});
+			await vi.advanceTimersByTimeAsync(0);
+
+			vi.mocked(notifyToast).mockClear();
+
+			// Set up idle advancement that succeeds (makes progress)
+			mockReadDoc.mockReset();
+			mockWriteDoc.mockReset();
+			mockReadDoc.mockResolvedValue({ success: true, content: '- [ ] Task one\n- [ ] Task two' });
+			mockWriteDoc.mockResolvedValue({ success: true });
+			mockSendToModerator.mockResolvedValue(undefined);
+
+			useGroupChatStore.setState({
+				groupChatMessages: [
+					{ timestamp: '2024-01-01T00:01:00Z', from: 'moderator', content: 'Task complete: Done.' },
+				],
+			});
+
+			// Advance 9 minutes, then trigger progress
+			await vi.advanceTimersByTimeAsync(9 * 60 * 1000);
+
+			// Trigger idle transition (should mark task complete and reset progress timestamp)
+			useGroupChatStore.setState({ groupChatState: 'moderator-thinking' });
+			useGroupChatStore.setState({ groupChatState: 'idle' });
+			await vi.advanceTimersByTimeAsync(0);
+
+			// Advance another 9 minutes — should NOT timeout since progress was made
+			await vi.advanceTimersByTimeAsync(9 * 60 * 1000);
+
+			// Should NOT have timed out
+			expect(notifyToast).not.toHaveBeenCalledWith(
+				expect.objectContaining({ title: 'Group Chat Auto Run Timeout' })
+			);
+
+			hook.unmount();
+		});
+
+		it('clears timeout checker on stop', async () => {
+			vi.useFakeTimers();
+
+			const content = '- [ ] Task one\n- [ ] Task two';
+			mockReadDoc.mockResolvedValue({ success: true, content });
+			mockSendToModerator.mockResolvedValue(undefined);
+
+			const hook = renderHook(() => useGroupChatAutoRun());
+
+			await act(async () => {
+				await hook.result.current.startAutoRun('gc-1', '/docs', 'tasks.md');
+			});
+			await vi.advanceTimersByTimeAsync(0);
+
+			act(() => {
+				hook.result.current.stopAutoRun();
+			});
+
+			vi.mocked(notifyToast).mockClear();
+
+			// Advance past timeout — should NOT trigger since stopped
+			await vi.advanceTimersByTimeAsync(11 * 60 * 1000);
+
+			expect(notifyToast).not.toHaveBeenCalledWith(
+				expect.objectContaining({ title: 'Group Chat Auto Run Timeout' })
+			);
+
+			hook.unmount();
 		});
 	});
 });
