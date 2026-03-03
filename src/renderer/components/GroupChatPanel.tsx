@@ -166,7 +166,7 @@ export function GroupChatPanel({
 				onReorderQueuedItems={onReorderQueuedItems}
 				enterToSendAI={enterToSendAI}
 				setEnterToSendAI={setEnterToSendAI}
-				showFlashNotification={showFlashNotification}
+				showFlashNotification={autoRunState.isRunning ? undefined : showFlashNotification}
 				shortcuts={shortcuts}
 			/>
 		</div>
