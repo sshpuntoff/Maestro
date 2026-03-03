@@ -19,6 +19,7 @@ import type {
 import { GroupChatHeader } from './GroupChatHeader';
 import { GroupChatMessages, type GroupChatMessagesHandle } from './GroupChatMessages';
 import { GroupChatInput } from './GroupChatInput';
+import { useGroupChatStore } from '../stores/groupChatStore';
 
 interface GroupChatPanelProps {
 	theme: Theme;
@@ -109,6 +110,8 @@ export function GroupChatPanel({
 	participantColors,
 	messagesRef,
 }: GroupChatPanelProps): JSX.Element {
+	const autoRunState = useGroupChatStore((s) => s.groupChatAutoRunState);
+
 	return (
 		<div className="flex flex-col h-full" style={{ backgroundColor: theme.colors.bgMain }}>
 			<GroupChatHeader
@@ -122,6 +125,9 @@ export function GroupChatPanel({
 				rightPanelOpen={rightPanelOpen}
 				onToggleRightPanel={onToggleRightPanel}
 				shortcuts={shortcuts}
+				autoRunActive={autoRunState.isRunning}
+				autoRunCompleted={autoRunState.completedTasks}
+				autoRunTotal={autoRunState.totalTasks}
 			/>
 
 			<GroupChatMessages

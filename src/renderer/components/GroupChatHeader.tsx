@@ -22,6 +22,12 @@ interface GroupChatHeaderProps {
 	rightPanelOpen: boolean;
 	onToggleRightPanel: () => void;
 	shortcuts: Record<string, Shortcut>;
+	/** Whether Auto Run is currently active */
+	autoRunActive?: boolean;
+	/** Number of completed Auto Run tasks */
+	autoRunCompleted?: number;
+	/** Total number of Auto Run tasks */
+	autoRunTotal?: number;
 }
 
 export function GroupChatHeader({
@@ -35,6 +41,9 @@ export function GroupChatHeader({
 	rightPanelOpen,
 	onToggleRightPanel,
 	shortcuts,
+	autoRunActive,
+	autoRunCompleted,
+	autoRunTotal,
 }: GroupChatHeaderProps): JSX.Element {
 	return (
 		<div
@@ -81,6 +90,18 @@ export function GroupChatHeader({
 				>
 					{participantCount} participant{participantCount !== 1 ? 's' : ''}
 				</span>
+				{autoRunActive && (
+					<span
+						className="text-xs px-2 py-0.5 rounded-full"
+						style={{
+							backgroundColor: theme.colors.accentDim,
+							color: theme.colors.accent,
+						}}
+						title="Auto Run in progress"
+					>
+						Auto Run: {autoRunCompleted ?? 0}/{autoRunTotal ?? 0}
+					</span>
+				)}
 				{/* Total cost pill - only show when there's a cost */}
 				{totalCost !== undefined && totalCost > 0 && (
 					<span

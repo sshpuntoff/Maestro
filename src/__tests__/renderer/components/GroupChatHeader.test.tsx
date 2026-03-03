@@ -33,6 +33,8 @@ const mockTheme = {
 		textMain: '#fff',
 		textDim: '#999',
 		success: '#4caf50',
+		accent: '#7aa2f7',
+		accentDim: 'rgba(122, 162, 247, 0.2)',
 	},
 } as Theme;
 
@@ -96,5 +98,26 @@ describe('GroupChatHeader', () => {
 	it('uses singular "participant" for count of 1', () => {
 		render(<GroupChatHeader {...defaultProps} participantCount={1} />);
 		expect(screen.getByText('1 participant')).toBeTruthy();
+	});
+
+	it('shows Auto Run badge when autoRunActive is true', () => {
+		render(<GroupChatHeader {...defaultProps} autoRunActive={true} autoRunCompleted={3} autoRunTotal={7} />);
+		expect(screen.getByText('Auto Run: 3/7')).toBeTruthy();
+		expect(screen.getByTitle('Auto Run in progress')).toBeTruthy();
+	});
+
+	it('does not show Auto Run badge when autoRunActive is false', () => {
+		render(<GroupChatHeader {...defaultProps} autoRunActive={false} autoRunCompleted={3} autoRunTotal={7} />);
+		expect(screen.queryByText('Auto Run: 3/7')).toBeNull();
+	});
+
+	it('does not show Auto Run badge when autoRunActive is not provided', () => {
+		render(<GroupChatHeader {...defaultProps} />);
+		expect(screen.queryByTitle('Auto Run in progress')).toBeNull();
+	});
+
+	it('shows Auto Run badge with zero counts when counts are not provided', () => {
+		render(<GroupChatHeader {...defaultProps} autoRunActive={true} />);
+		expect(screen.getByText('Auto Run: 0/0')).toBeTruthy();
 	});
 });
