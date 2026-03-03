@@ -117,6 +117,57 @@ describe('GroupChat Preload API', () => {
 		});
 	});
 
+	describe('Auto-Run config operations', () => {
+		describe('setAutoRunConfig', () => {
+			it('should invoke groupChat:setAutoRunConfig', async () => {
+				mockInvoke.mockResolvedValue({ id: 'gc-123' });
+				const config = { folderPath: '/docs', selectedFile: 'tasks.md' };
+
+				await api.setAutoRunConfig('gc-123', config);
+
+				expect(mockInvoke).toHaveBeenCalledWith(
+					'groupChat:setAutoRunConfig',
+					'gc-123',
+					config
+				);
+			});
+
+			it('should invoke with partial config', async () => {
+				mockInvoke.mockResolvedValue({ id: 'gc-123' });
+				const config = { folderPath: '/docs' };
+
+				await api.setAutoRunConfig('gc-123', config);
+
+				expect(mockInvoke).toHaveBeenCalledWith(
+					'groupChat:setAutoRunConfig',
+					'gc-123',
+					config
+				);
+			});
+		});
+
+		describe('getAutoRunConfig', () => {
+			it('should invoke groupChat:getAutoRunConfig', async () => {
+				const config = { folderPath: '/docs', selectedFile: 'tasks.md' };
+				mockInvoke.mockResolvedValue(config);
+
+				const result = await api.getAutoRunConfig('gc-123');
+
+				expect(mockInvoke).toHaveBeenCalledWith('groupChat:getAutoRunConfig', 'gc-123');
+				expect(result).toEqual(config);
+			});
+
+			it('should return null when no config exists', async () => {
+				mockInvoke.mockResolvedValue(null);
+
+				const result = await api.getAutoRunConfig('gc-123');
+
+				expect(mockInvoke).toHaveBeenCalledWith('groupChat:getAutoRunConfig', 'gc-123');
+				expect(result).toBeNull();
+			});
+		});
+	});
+
 	describe('Chat log operations', () => {
 		describe('appendMessage', () => {
 			it('should invoke groupChat:appendMessage', async () => {

@@ -34,7 +34,7 @@ import {
 } from '../../group-chat/group-chat-storage';
 
 // Group chat history type
-import type { GroupChatHistoryEntry } from '../../../shared/group-chat-types';
+import type { GroupChatHistoryEntry, GroupChatAutoRunConfig } from '../../../shared/group-chat-types';
 
 // Group chat log imports
 import { appendToLog, readLog, saveImage, GroupChatMessage } from '../../group-chat/group-chat-log';
@@ -333,6 +333,40 @@ export function registerGroupChatHandlers(deps: GroupChatHandlerDependencies): v
 				}
 
 				return updated;
+			}
+		)
+	);
+
+	// ========== Auto-Run Config Handlers ==========
+
+	// Set Auto-Run configuration for a group chat
+	ipcMain.handle(
+		'groupChat:setAutoRunConfig',
+		withIpcErrorLogging(
+			handlerOpts('setAutoRunConfig'),
+			async (
+				id: string,
+				config: { folderPath?: string; selectedFile?: string }
+			): Promise<GroupChat> => {
+				logger.info(`Setting Auto-Run config for group chat ${id}`, LOG_CONTEXT, config);
+				const updated = await updateGroupChat(id, { autoRun: config });
+				return updated;
+			}
+		)
+	);
+
+	// Get Auto-Run configuration for a group chat
+	ipcMain.handle(
+		'groupChat:getAutoRunConfig',
+		withIpcErrorLogging(
+			handlerOpts('getAutoRunConfig'),
+			async (id: string): Promise<GroupChatAutoRunConfig | null> => {
+				logger.debug(`Getting Auto-Run config for group chat: ${id}`, LOG_CONTEXT);
+				const chat = await loadGroupChat(id);
+				if (!chat) {
+					throw new Error(`Group chat not found: ${id}`);
+				}
+				return chat.autoRun ?? null;
 			}
 		)
 	);

@@ -195,6 +195,10 @@ type GroupChatData = {
 	imagesDir: string;
 	draftMessage?: string;
 	archived?: boolean;
+	autoRun?: {
+		folderPath?: string;
+		selectedFile?: string;
+	};
 };
 
 interface MaestroAPI {
@@ -1717,6 +1721,14 @@ interface MaestroAPI {
 			}
 		) => Promise<GroupChatData>;
 		archive: (id: string, archived: boolean) => Promise<GroupChatData>;
+		// Auto-Run config
+		setAutoRunConfig: (
+			id: string,
+			config: { folderPath?: string; selectedFile?: string }
+		) => Promise<GroupChatData>;
+		getAutoRunConfig: (
+			id: string
+		) => Promise<{ folderPath?: string; selectedFile?: string } | null>;
 		// Chat log
 		appendMessage: (id: string, from: string, content: string) => Promise<void>;
 		getMessages: (id: string) => Promise<

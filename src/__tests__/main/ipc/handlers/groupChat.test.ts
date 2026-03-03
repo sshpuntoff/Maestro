@@ -161,6 +161,9 @@ describe('groupChat IPC handlers', () => {
 				'groupChat:archive',
 				'groupChat:rename',
 				'groupChat:update',
+				// Auto-Run config handlers
+				'groupChat:setAutoRunConfig',
+				'groupChat:getAutoRunConfig',
 				// Chat log handlers
 				'groupChat:appendMessage',
 				'groupChat:getMessages',
@@ -520,6 +523,116 @@ describe('groupChat IPC handlers', () => {
 			);
 			expect(groupChatModerator.spawnModerator).toHaveBeenCalled();
 			expect(result).toEqual(mockUpdatedChat);
+		});
+	});
+
+	describe('groupChat:setAutoRunConfig', () => {
+		it('should set Auto-Run config on a group chat', async () => {
+			const mockUpdatedChat: GroupChat = {
+				id: 'gc-autorun',
+				name: 'Auto Run Chat',
+				createdAt: Date.now(),
+				updatedAt: Date.now(),
+				moderatorAgentId: 'claude-code',
+				moderatorSessionId: 'session-autorun',
+				participants: [],
+				logPath: '/path/autorun',
+				imagesDir: '/images/autorun',
+				autoRun: { folderPath: '/docs', selectedFile: 'tasks.md' },
+			};
+
+			vi.mocked(groupChatStorage.updateGroupChat).mockResolvedValue(mockUpdatedChat);
+
+			const handler = handlers.get('groupChat:setAutoRunConfig');
+			const config = { folderPath: '/docs', selectedFile: 'tasks.md' };
+			const result = await handler!({} as any, 'gc-autorun', config);
+
+			expect(groupChatStorage.updateGroupChat).toHaveBeenCalledWith('gc-autorun', {
+				autoRun: config,
+			});
+			expect(result).toEqual(mockUpdatedChat);
+		});
+
+		it('should set partial Auto-Run config', async () => {
+			const mockUpdatedChat: GroupChat = {
+				id: 'gc-autorun-partial',
+				name: 'Partial Config Chat',
+				createdAt: Date.now(),
+				updatedAt: Date.now(),
+				moderatorAgentId: 'claude-code',
+				moderatorSessionId: 'session-partial',
+				participants: [],
+				logPath: '/path/partial',
+				imagesDir: '/images/partial',
+				autoRun: { folderPath: '/docs' },
+			};
+
+			vi.mocked(groupChatStorage.updateGroupChat).mockResolvedValue(mockUpdatedChat);
+
+			const handler = handlers.get('groupChat:setAutoRunConfig');
+			const config = { folderPath: '/docs' };
+			const result = await handler!({} as any, 'gc-autorun-partial', config);
+
+			expect(groupChatStorage.updateGroupChat).toHaveBeenCalledWith('gc-autorun-partial', {
+				autoRun: config,
+			});
+			expect(result).toEqual(mockUpdatedChat);
+		});
+	});
+
+	describe('groupChat:getAutoRunConfig', () => {
+		it('should return Auto-Run config for a group chat', async () => {
+			const mockChat: GroupChat = {
+				id: 'gc-get-autorun',
+				name: 'Get Auto Run Chat',
+				createdAt: Date.now(),
+				updatedAt: Date.now(),
+				moderatorAgentId: 'claude-code',
+				moderatorSessionId: 'session-get-autorun',
+				participants: [],
+				logPath: '/path/get-autorun',
+				imagesDir: '/images/get-autorun',
+				autoRun: { folderPath: '/docs', selectedFile: 'tasks.md' },
+			};
+
+			vi.mocked(groupChatStorage.loadGroupChat).mockResolvedValue(mockChat);
+
+			const handler = handlers.get('groupChat:getAutoRunConfig');
+			const result = await handler!({} as any, 'gc-get-autorun');
+
+			expect(groupChatStorage.loadGroupChat).toHaveBeenCalledWith('gc-get-autorun');
+			expect(result).toEqual({ folderPath: '/docs', selectedFile: 'tasks.md' });
+		});
+
+		it('should return null when no Auto-Run config is set', async () => {
+			const mockChat: GroupChat = {
+				id: 'gc-no-autorun',
+				name: 'No Auto Run Chat',
+				createdAt: Date.now(),
+				updatedAt: Date.now(),
+				moderatorAgentId: 'claude-code',
+				moderatorSessionId: 'session-no-autorun',
+				participants: [],
+				logPath: '/path/no-autorun',
+				imagesDir: '/images/no-autorun',
+			};
+
+			vi.mocked(groupChatStorage.loadGroupChat).mockResolvedValue(mockChat);
+
+			const handler = handlers.get('groupChat:getAutoRunConfig');
+			const result = await handler!({} as any, 'gc-no-autorun');
+
+			expect(result).toBeNull();
+		});
+
+		it('should throw error for non-existent group chat', async () => {
+			vi.mocked(groupChatStorage.loadGroupChat).mockResolvedValue(null);
+
+			const handler = handlers.get('groupChat:getAutoRunConfig');
+
+			await expect(handler!({} as any, 'non-existent')).rejects.toThrow(
+				'Group chat not found: non-existent'
+			);
 		});
 	});
 

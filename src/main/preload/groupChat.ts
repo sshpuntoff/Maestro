@@ -91,6 +91,17 @@ export function createGroupChatApi() {
 		archive: (id: string, archived: boolean) =>
 			ipcRenderer.invoke('groupChat:archive', id, archived),
 
+		// Auto-Run config
+		setAutoRunConfig: (
+			id: string,
+			config: { folderPath?: string; selectedFile?: string }
+		) => ipcRenderer.invoke('groupChat:setAutoRunConfig', id, config),
+
+		getAutoRunConfig: (
+			id: string
+		): Promise<{ folderPath?: string; selectedFile?: string } | null> =>
+			ipcRenderer.invoke('groupChat:getAutoRunConfig', id),
+
 		// Chat log
 		appendMessage: (id: string, from: string, content: string) =>
 			ipcRenderer.invoke('groupChat:appendMessage', id, from, content),
