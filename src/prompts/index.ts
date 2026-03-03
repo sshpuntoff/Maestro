@@ -35,6 +35,8 @@ export {
 	// Group chat prompts
 	groupChatModeratorSystemPrompt,
 	groupChatModeratorSynthesisPrompt,
+	groupChatModeratorAutorunSystemPrompt,
+	groupChatModeratorAutorunSynthesisPrompt,
 	groupChatParticipantPrompt,
 	groupChatParticipantRequestPrompt,
 
