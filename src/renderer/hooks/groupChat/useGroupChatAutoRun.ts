@@ -9,6 +9,7 @@
 
 import { useCallback, useRef, useEffect } from 'react';
 import { useGroupChatStore } from '../../stores/groupChatStore';
+import { notifyToast } from '../../stores/notificationStore';
 import { countUnfinishedTasks, countCheckedTasks } from '../batch/batchUtils';
 import type { GroupChatMessage } from '../../types';
 
@@ -84,13 +85,21 @@ export function useGroupChatAutoRun(): UseGroupChatAutoRunReturn {
 		const { setGroupChatAutoRunState } = useGroupChatStore.getState();
 
 		// Re-read document to get current state
-		const result = await window.maestro.autorun.readDoc(folderPath, filename);
+		let result;
+		try {
+			result = await window.maestro.autorun.readDoc(folderPath, filename);
+		} catch (err) {
+			if (stoppedRef.current) return;
+			const message = err instanceof Error ? err.message : 'Failed to read document';
+			setGroupChatAutoRunState({ isRunning: false, error: message, currentTaskText: null });
+			notifyToast({ type: 'error', title: 'Group Chat Auto Run Error', message });
+			return;
+		}
 		if (!result.success || !result.content) {
-			setGroupChatAutoRunState({
-				isRunning: false,
-				error: result.error || 'Failed to read document',
-				currentTaskText: null,
-			});
+			if (stoppedRef.current) return;
+			const message = result.error || 'Failed to read document';
+			setGroupChatAutoRunState({ isRunning: false, error: message, currentTaskText: null });
+			notifyToast({ type: 'error', title: 'Group Chat Auto Run Error', message });
 			return;
 		}
 
@@ -122,7 +131,14 @@ export function useGroupChatAutoRun(): UseGroupChatAutoRunReturn {
 		});
 
 		// Send task to moderator with Auto-Run flag so router uses Auto-Run prompts
-		await window.maestro.groupChat.sendToModerator(groupChatId, taskText, undefined, undefined, { isAutoRunTask: true });
+		try {
+			await window.maestro.groupChat.sendToModerator(groupChatId, taskText, undefined, undefined, { isAutoRunTask: true });
+		} catch (err) {
+			if (stoppedRef.current) return;
+			const message = err instanceof Error ? err.message : 'Failed to send task to moderator';
+			setGroupChatAutoRunState({ isRunning: false, error: message, currentTaskText: null });
+			notifyToast({ type: 'error', title: 'Group Chat Auto Run Error', message });
+		}
 	}, []);
 
 	/**
@@ -142,54 +158,60 @@ export function useGroupChatAutoRun(): UseGroupChatAutoRunReturn {
 		if (!groupChatId || !folderPath || !selectedFile || !currentTaskText) return;
 		if (stoppedRef.current) return;
 
-		// (1) Re-read the document
-		const result = await window.maestro.autorun.readDoc(folderPath, selectedFile);
-		if (!result.success || !result.content) {
-			setGroupChatAutoRunState({
-				isRunning: false,
-				error: result.error || 'Failed to read document during advancement',
-				currentTaskText: null,
-			});
-			return;
-		}
-
-		if (stoppedRef.current) return;
-
-		// (2) Check last moderator message for "Task complete" signal
-		const lastModMessage = findLastModeratorMessage(groupChatMessages);
-		const isComplete = lastModMessage?.trim().toLowerCase().startsWith('task complete:') ?? false;
-
-		// (3) If complete, mark the task in the doc and write back
-		if (isComplete) {
-			const updatedContent = markTaskCompleteInDoc(result.content, currentTaskText);
-
-			if (updatedContent !== result.content) {
-				await window.maestro.autorun.writeDoc(folderPath, selectedFile, updatedContent);
+		try {
+			// (1) Re-read the document
+			const result = await window.maestro.autorun.readDoc(folderPath, selectedFile);
+			if (!result.success || !result.content) {
+				if (stoppedRef.current) return;
+				const message = result.error || 'Failed to read document during advancement';
+				setGroupChatAutoRunState({ isRunning: false, error: message, currentTaskText: null });
+				notifyToast({ type: 'error', title: 'Group Chat Auto Run Error', message });
+				return;
 			}
 
-			// (4) Update store — re-count from updated content
-			const newChecked = countCheckedTasks(updatedContent);
-			const newTotal = newChecked + countUnfinishedTasks(updatedContent);
-			setGroupChatAutoRunState({
-				completedTasks: newChecked,
-				totalTasks: newTotal,
-				currentTaskText: null,
-			});
-		} else {
-			// Task incomplete — clear task text but don't increment completed count
-			setGroupChatAutoRunState({
-				currentTaskText: null,
-			});
-		}
-
-		if (stoppedRef.current) return;
-
-		// (5) After 500ms delay, advance to the next task
-		advanceTimerRef.current = setTimeout(() => {
-			advanceTimerRef.current = null;
 			if (stoppedRef.current) return;
-			processNextTask(groupChatId, folderPath, selectedFile);
-		}, TASK_ADVANCE_DELAY_MS);
+
+			// (2) Check last moderator message for "Task complete" signal
+			const lastModMessage = findLastModeratorMessage(groupChatMessages);
+			const isComplete = lastModMessage?.trim().toLowerCase().startsWith('task complete:') ?? false;
+
+			// (3) If complete, mark the task in the doc and write back
+			if (isComplete) {
+				const updatedContent = markTaskCompleteInDoc(result.content, currentTaskText);
+
+				if (updatedContent !== result.content) {
+					await window.maestro.autorun.writeDoc(folderPath, selectedFile, updatedContent);
+				}
+
+				// (4) Update store — re-count from updated content
+				const newChecked = countCheckedTasks(updatedContent);
+				const newTotal = newChecked + countUnfinishedTasks(updatedContent);
+				setGroupChatAutoRunState({
+					completedTasks: newChecked,
+					totalTasks: newTotal,
+					currentTaskText: null,
+				});
+			} else {
+				// Task incomplete — clear task text but don't increment completed count
+				setGroupChatAutoRunState({
+					currentTaskText: null,
+				});
+			}
+
+			if (stoppedRef.current) return;
+
+			// (5) After 500ms delay, advance to the next task
+			advanceTimerRef.current = setTimeout(() => {
+				advanceTimerRef.current = null;
+				if (stoppedRef.current) return;
+				processNextTask(groupChatId, folderPath, selectedFile);
+			}, TASK_ADVANCE_DELAY_MS);
+		} catch (err) {
+			if (stoppedRef.current) return;
+			const message = err instanceof Error ? err.message : 'Auto Run task advancement failed';
+			setGroupChatAutoRunState({ isRunning: false, error: message, currentTaskText: null });
+			notifyToast({ type: 'error', title: 'Group Chat Auto Run Error', message });
+		}
 	}, [processNextTask]);
 
 	/**
@@ -225,6 +247,38 @@ export function useGroupChatAutoRun(): UseGroupChatAutoRunReturn {
 	}, [handleIdleAdvancement]);
 
 	/**
+	 * Group chat error watcher: if groupChatError is set while Auto-Run is active,
+	 * stop gracefully and surface the error in the Auto-Run state.
+	 */
+	useEffect(() => {
+		const unsubscribe = useGroupChatStore.subscribe((state, prevState) => {
+			// Only react to new errors (null → non-null transition)
+			if (!state.groupChatError || prevState.groupChatError === state.groupChatError) return;
+			if (!state.groupChatAutoRunState.isRunning) return;
+			if (stoppedRef.current) return;
+
+			// Stop Auto-Run gracefully
+			stoppedRef.current = true;
+			if (advanceTimerRef.current) {
+				clearTimeout(advanceTimerRef.current);
+				advanceTimerRef.current = null;
+			}
+
+			const errorMessage = state.groupChatError.error?.message || 'Group chat error during Auto Run';
+			state.setGroupChatAutoRunState({
+				isRunning: false,
+				error: errorMessage,
+				currentTaskText: null,
+			});
+			notifyToast({ type: 'error', title: 'Group Chat Auto Run Stopped', message: errorMessage });
+		});
+
+		return () => {
+			unsubscribe();
+		};
+	}, []);
+
+	/**
 	 * Start Auto-Run: read the document, count tasks, and kick off the first task.
 	 */
 	const startAutoRun = useCallback(async (groupChatId: string, folderPath: string, filename: string) => {
@@ -234,12 +288,19 @@ export function useGroupChatAutoRun(): UseGroupChatAutoRunReturn {
 		groupChatIdRef.current = groupChatId;
 
 		// Read the document
-		const result = await window.maestro.autorun.readDoc(folderPath, filename);
+		let result;
+		try {
+			result = await window.maestro.autorun.readDoc(folderPath, filename);
+		} catch (err) {
+			const message = err instanceof Error ? err.message : 'Failed to read document';
+			setGroupChatAutoRunState({ isRunning: false, error: message });
+			notifyToast({ type: 'error', title: 'Group Chat Auto Run Error', message });
+			return;
+		}
 		if (!result.success || !result.content) {
-			setGroupChatAutoRunState({
-				isRunning: false,
-				error: result.error || 'Failed to read document',
-			});
+			const message = result.error || 'Failed to read document';
+			setGroupChatAutoRunState({ isRunning: false, error: message });
+			notifyToast({ type: 'error', title: 'Group Chat Auto Run Error', message });
 			return;
 		}
 
@@ -272,11 +333,9 @@ export function useGroupChatAutoRun(): UseGroupChatAutoRunReturn {
 			await processNextTask(groupChatId, folderPath, filename);
 		} catch (err) {
 			if (stoppedRef.current) return;
-			setGroupChatAutoRunState({
-				isRunning: false,
-				error: err instanceof Error ? err.message : 'Failed to start Auto-Run',
-				currentTaskText: null,
-			});
+			const message = err instanceof Error ? err.message : 'Failed to start Auto-Run';
+			setGroupChatAutoRunState({ isRunning: false, error: message, currentTaskText: null });
+			notifyToast({ type: 'error', title: 'Group Chat Auto Run Error', message });
 		}
 	}, [processNextTask]);
 

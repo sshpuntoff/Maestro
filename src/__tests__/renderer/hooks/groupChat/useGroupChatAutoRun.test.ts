@@ -6,13 +6,20 @@
  * - markTaskCompleteInDoc: pure function for marking a task complete in markdown
  * - startAutoRun: reads doc, initializes store state, sends first task to moderator
  * - stopAutoRun: sets stoppedRef, updates store, clears timers
- * - Error handling: doc read failures, no tasks found
+ * - Error handling: doc read failures, no tasks found, error toasts, groupChatError watcher
  * - processNextTask: re-reads doc, extracts next task, sends to moderator
  * - Idle-state watcher: detects idle transitions, checks moderator signal, marks tasks, advances
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
+
+// Mock notifyToast (module-level export can't be spied — must vi.mock)
+vi.mock('../../../../renderer/stores/notificationStore', async () => {
+	const actual = await vi.importActual('../../../../renderer/stores/notificationStore');
+	return { ...actual, notifyToast: vi.fn() };
+});
+import { notifyToast } from '../../../../renderer/stores/notificationStore';
 import {
 	useGroupChatAutoRun,
 	extractFirstUncheckedTask,
@@ -29,7 +36,11 @@ const mockWriteDoc = vi.fn();
 const mockSendToModerator = vi.fn();
 
 beforeEach(() => {
-	vi.clearAllMocks();
+	// Reset call history AND implementation (mockOnce queues etc.)
+	mockReadDoc.mockReset();
+	mockWriteDoc.mockReset();
+	mockSendToModerator.mockReset();
+	vi.mocked(notifyToast).mockClear();
 
 	// Reset the Zustand store
 	useGroupChatStore.setState({
@@ -44,6 +55,7 @@ beforeEach(() => {
 		},
 		groupChatState: 'idle',
 		groupChatMessages: [],
+		groupChatError: null,
 	});
 
 	// Mock window.maestro
@@ -323,6 +335,333 @@ describe('useGroupChatAutoRun', () => {
 
 			const state = useGroupChatStore.getState().groupChatAutoRunState;
 			expect(state.isRunning).toBe(false);
+		});
+
+		it('clears pending advance timer when stopping', async () => {
+			const content = `- [ ] Task one\n- [ ] Task two`;
+			mockReadDoc.mockResolvedValue({ success: true, content });
+			mockSendToModerator.mockResolvedValue(undefined);
+
+			const { result } = renderHook(() => useGroupChatAutoRun());
+
+			await act(async () => {
+				await result.current.startAutoRun('gc-1', '/docs', 'tasks.md');
+			});
+
+			// Stop and verify no error toast is emitted
+			act(() => {
+				result.current.stopAutoRun();
+			});
+
+			// stopAutoRun should not emit a toast
+			expect(notifyToast).not.toHaveBeenCalled();
+		});
+	});
+
+	// ==========================================================================
+	// Error toast emission
+	// ==========================================================================
+
+	describe('error toasts', () => {
+		it('emits error toast when startAutoRun document read fails', async () => {
+			mockReadDoc.mockResolvedValue({ success: false, error: 'File not found' });
+
+			const { result } = renderHook(() => useGroupChatAutoRun());
+
+			await act(async () => {
+				await result.current.startAutoRun('gc-1', '/docs', 'missing.md');
+			});
+
+			expect(notifyToast).toHaveBeenCalledWith({
+				type: 'error',
+				title: 'Group Chat Auto Run Error',
+				message: 'File not found',
+			});
+		});
+
+		it('emits error toast when startAutoRun readDoc throws', async () => {
+			mockReadDoc.mockRejectedValue(new Error('Network error'));
+
+			const { result } = renderHook(() => useGroupChatAutoRun());
+
+			await act(async () => {
+				await result.current.startAutoRun('gc-1', '/docs', 'tasks.md');
+			});
+
+			expect(notifyToast).toHaveBeenCalledWith({
+				type: 'error',
+				title: 'Group Chat Auto Run Error',
+				message: 'Network error',
+			});
+			const state = useGroupChatStore.getState().groupChatAutoRunState;
+			expect(state.isRunning).toBe(false);
+			expect(state.error).toBe('Network error');
+		});
+
+		it('emits error toast when sendToModerator fails during start', async () => {
+			const content = `- [ ] Task one`;
+			mockReadDoc.mockResolvedValue({ success: true, content });
+			mockSendToModerator.mockRejectedValue(new Error('IPC failure'));
+
+			const { result } = renderHook(() => useGroupChatAutoRun());
+
+			await act(async () => {
+				await result.current.startAutoRun('gc-1', '/docs', 'tasks.md');
+			});
+
+			expect(notifyToast).toHaveBeenCalledWith({
+				type: 'error',
+				title: 'Group Chat Auto Run Error',
+				message: 'IPC failure',
+			});
+		});
+
+		it('emits error toast when sendToModerator throws in processNextTask', async () => {
+			// sendToModerator throws immediately on first call
+			mockReadDoc.mockResolvedValue({ success: true, content: '- [ ] Task one' });
+			mockSendToModerator.mockRejectedValue(new Error('Moderator send failed'));
+
+			const { result } = renderHook(() => useGroupChatAutoRun());
+
+			await act(async () => {
+				await result.current.startAutoRun('gc-1', '/docs', 'tasks.md');
+			});
+
+			expect(notifyToast).toHaveBeenCalledWith({
+				type: 'error',
+				title: 'Group Chat Auto Run Error',
+				message: 'Moderator send failed',
+			});
+
+			const state = useGroupChatStore.getState().groupChatAutoRunState;
+			expect(state.isRunning).toBe(false);
+			expect(state.error).toBe('Moderator send failed');
+		});
+
+		it('emits error toast when doc read fails during idle advancement', async () => {
+			const content = '- [ ] Task one\n- [ ] Task two';
+			mockReadDoc.mockResolvedValue({ success: true, content });
+			mockSendToModerator.mockResolvedValue(undefined);
+
+			const hook = renderHook(() => useGroupChatAutoRun());
+
+			await act(async () => {
+				await hook.result.current.startAutoRun('gc-1', '/docs', 'tasks.md');
+			});
+
+			mockReadDoc.mockReset();
+			vi.useFakeTimers();
+
+			// Now readDoc fails during idle advancement
+			mockReadDoc.mockResolvedValue({ success: false, error: 'Permission denied' });
+
+			useGroupChatStore.setState({
+				groupChatMessages: [
+					{ timestamp: '2024-01-01T00:01:00Z', from: 'moderator', content: 'Task complete: Done.' },
+				],
+			});
+
+			useGroupChatStore.setState({ groupChatState: 'moderator-thinking' });
+			useGroupChatStore.setState({ groupChatState: 'idle' });
+			await vi.advanceTimersByTimeAsync(0);
+
+			expect(notifyToast).toHaveBeenCalledWith({
+				type: 'error',
+				title: 'Group Chat Auto Run Error',
+				message: 'Permission denied',
+			});
+
+			hook.unmount();
+		});
+
+		it('emits error toast when writeDoc throws during idle advancement', async () => {
+			const content = '- [ ] Task one\n- [ ] Task two';
+			mockReadDoc.mockResolvedValue({ success: true, content });
+			mockSendToModerator.mockResolvedValue(undefined);
+
+			const hook = renderHook(() => useGroupChatAutoRun());
+
+			await act(async () => {
+				await hook.result.current.startAutoRun('gc-1', '/docs', 'tasks.md');
+			});
+
+			mockReadDoc.mockReset();
+			mockWriteDoc.mockReset();
+			vi.useFakeTimers();
+
+			mockReadDoc.mockResolvedValue({ success: true, content: '- [ ] Task one\n- [ ] Task two' });
+			mockWriteDoc.mockRejectedValue(new Error('Disk write failed'));
+
+			useGroupChatStore.setState({
+				groupChatMessages: [
+					{ timestamp: '2024-01-01T00:01:00Z', from: 'moderator', content: 'Task complete: Done.' },
+				],
+			});
+
+			useGroupChatStore.setState({ groupChatState: 'moderator-thinking' });
+			useGroupChatStore.setState({ groupChatState: 'idle' });
+			await vi.advanceTimersByTimeAsync(0);
+
+			expect(notifyToast).toHaveBeenCalledWith({
+				type: 'error',
+				title: 'Group Chat Auto Run Error',
+				message: 'Disk write failed',
+			});
+
+			const state = useGroupChatStore.getState().groupChatAutoRunState;
+			expect(state.isRunning).toBe(false);
+			expect(state.error).toBe('Disk write failed');
+
+			hook.unmount();
+		});
+
+		it('does not emit toast for non-error cases (no unchecked tasks)', async () => {
+			const content = `- [x] All done`;
+			mockReadDoc.mockResolvedValue({ success: true, content });
+
+			const { result } = renderHook(() => useGroupChatAutoRun());
+
+			await act(async () => {
+				await result.current.startAutoRun('gc-1', '/docs', 'tasks.md');
+			});
+
+			// "No unchecked tasks" is a validation message, not an operational error
+			// It sets store error but should not emit a toast
+			expect(notifyToast).not.toHaveBeenCalled();
+		});
+	});
+
+	// ==========================================================================
+	// groupChatError watcher
+	// ==========================================================================
+
+	describe('groupChatError watcher', () => {
+		it('stops Auto-Run when groupChatError is set during a run', async () => {
+			const content = '- [ ] Task one\n- [ ] Task two';
+			mockReadDoc.mockResolvedValue({ success: true, content });
+			mockSendToModerator.mockResolvedValue(undefined);
+
+			const hook = renderHook(() => useGroupChatAutoRun());
+
+			await act(async () => {
+				await hook.result.current.startAutoRun('gc-1', '/docs', 'tasks.md');
+			});
+
+			expect(useGroupChatStore.getState().groupChatAutoRunState.isRunning).toBe(true);
+
+			// Simulate a group chat error
+			act(() => {
+				useGroupChatStore.setState({
+					groupChatError: {
+						groupChatId: 'gc-1',
+						error: { type: 'process_error', message: 'Agent crashed', recoverable: false },
+						participantName: 'agent-1',
+					},
+				});
+			});
+
+			const state = useGroupChatStore.getState().groupChatAutoRunState;
+			expect(state.isRunning).toBe(false);
+			expect(state.error).toBe('Agent crashed');
+			expect(state.currentTaskText).toBeNull();
+
+			expect(notifyToast).toHaveBeenCalledWith({
+				type: 'error',
+				title: 'Group Chat Auto Run Stopped',
+				message: 'Agent crashed',
+			});
+
+			hook.unmount();
+		});
+
+		it('does not stop when groupChatError is set while Auto-Run is not running', async () => {
+			const hook = renderHook(() => useGroupChatAutoRun());
+
+			act(() => {
+				useGroupChatStore.setState({
+					groupChatError: {
+						groupChatId: 'gc-1',
+						error: { type: 'process_error', message: 'Agent crashed', recoverable: false },
+					},
+				});
+			});
+
+			// Should not have emitted a toast since Auto-Run was not running
+			expect(notifyToast).not.toHaveBeenCalled();
+
+			hook.unmount();
+		});
+
+		it('does not react to groupChatError being cleared (non-null → null)', async () => {
+			const content = '- [ ] Task one\n- [ ] Task two';
+			mockReadDoc.mockResolvedValue({ success: true, content });
+			mockSendToModerator.mockResolvedValue(undefined);
+
+			const hook = renderHook(() => useGroupChatAutoRun());
+
+			await act(async () => {
+				await hook.result.current.startAutoRun('gc-1', '/docs', 'tasks.md');
+			});
+
+			// Set error first
+			act(() => {
+				useGroupChatStore.setState({
+					groupChatError: {
+						groupChatId: 'gc-1',
+						error: { type: 'process_error', message: 'Agent crashed', recoverable: false },
+					},
+				});
+			});
+
+			vi.mocked(notifyToast).mockClear();
+
+			// Restart auto-run (reset stopped state)
+			mockReadDoc.mockResolvedValue({ success: true, content: '- [ ] Task one\n- [ ] Task two' });
+			mockSendToModerator.mockResolvedValue(undefined);
+
+			await act(async () => {
+				await hook.result.current.startAutoRun('gc-1', '/docs', 'tasks.md');
+			});
+
+			// Clear the error — should NOT trigger the watcher again
+			act(() => {
+				useGroupChatStore.setState({ groupChatError: null });
+			});
+
+			// No error toast should have been emitted when clearing
+			expect(notifyToast).not.toHaveBeenCalledWith(
+				expect.objectContaining({ title: 'Group Chat Auto Run Stopped' })
+			);
+
+			hook.unmount();
+		});
+
+		it('uses fallback message when error has no message', async () => {
+			const content = '- [ ] Task one\n- [ ] Task two';
+			mockReadDoc.mockResolvedValue({ success: true, content });
+			mockSendToModerator.mockResolvedValue(undefined);
+
+			const hook = renderHook(() => useGroupChatAutoRun());
+
+			await act(async () => {
+				await hook.result.current.startAutoRun('gc-1', '/docs', 'tasks.md');
+			});
+
+			// Set error with no message field
+			act(() => {
+				useGroupChatStore.setState({
+					groupChatError: {
+						groupChatId: 'gc-1',
+						error: { type: 'unknown', message: '', recoverable: false },
+					},
+				});
+			});
+
+			const state = useGroupChatStore.getState().groupChatAutoRunState;
+			expect(state.isRunning).toBe(false);
+			expect(state.error).toBe('Group chat error during Auto Run');
+
+			hook.unmount();
 		});
 	});
 
