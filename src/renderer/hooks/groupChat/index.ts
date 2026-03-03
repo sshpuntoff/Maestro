@@ -3,4 +3,5 @@ export {
 	useGroupChatAutoRun,
 	type UseGroupChatAutoRunReturn,
 	extractFirstUncheckedTask,
+	markTaskCompleteInDoc,
 } from './useGroupChatAutoRun';
