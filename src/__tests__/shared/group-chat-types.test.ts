@@ -9,6 +9,7 @@ import { normalizeMentionName, mentionMatches } from '../../shared/group-chat-ty
 import type {
 	GroupChatParticipant,
 	GroupChat,
+	GroupChatAutoRunConfig,
 	GroupChatMessage,
 	GroupChatState,
 	GroupChatHistoryEntry,
@@ -155,6 +156,23 @@ describe('ModeratorConfig type', () => {
 	});
 });
 
+describe('GroupChatAutoRunConfig type', () => {
+	it('should allow empty config', () => {
+		const config: GroupChatAutoRunConfig = {};
+		expect(config.folderPath).toBeUndefined();
+		expect(config.selectedFile).toBeUndefined();
+	});
+
+	it('should allow all fields', () => {
+		const config: GroupChatAutoRunConfig = {
+			folderPath: '/path/to/autorun/docs',
+			selectedFile: 'tasks.md',
+		};
+		expect(config.folderPath).toBe('/path/to/autorun/docs');
+		expect(config.selectedFile).toBe('tasks.md');
+	});
+});
+
 describe('GroupChat type', () => {
 	it('should allow valid group chat objects', () => {
 		const groupChat: GroupChat = {
@@ -186,6 +204,25 @@ describe('GroupChat type', () => {
 			draftMessage: 'Work in progress...',
 		};
 		expect(groupChat.draftMessage).toBe('Work in progress...');
+	});
+
+	it('should allow autoRun config', () => {
+		const groupChat: GroupChat = {
+			id: 'gc-123',
+			name: 'Test Group',
+			createdAt: Date.now(),
+			moderatorAgentId: 'claude-code',
+			moderatorSessionId: 'mod-session-123',
+			participants: [],
+			logPath: '/path/to/log.md',
+			imagesDir: '/path/to/images',
+			autoRun: {
+				folderPath: '/path/to/autorun/docs',
+				selectedFile: 'tasks.md',
+			},
+		};
+		expect(groupChat.autoRun?.folderPath).toBe('/path/to/autorun/docs');
+		expect(groupChat.autoRun?.selectedFile).toBe('tasks.md');
 	});
 });
 

@@ -64,6 +64,17 @@ export interface GroupChatParticipant {
 }
 
 /**
+ * Auto-Run configuration for a group chat.
+ * Configuration only — runtime state lives in the renderer store.
+ */
+export interface GroupChatAutoRunConfig {
+	/** Path to Auto-Run document folder */
+	folderPath?: string;
+	/** Currently selected document filename */
+	selectedFile?: string;
+}
+
+/**
  * Custom configuration for an agent (moderator)
  */
 export interface ModeratorConfig {
@@ -103,6 +114,8 @@ export interface GroupChat {
 	imagesDir: string;
 	draftMessage?: string;
 	archived?: boolean;
+	/** Auto-Run configuration (folder path and selected document) */
+	autoRun?: GroupChatAutoRunConfig;
 }
 
 /**
