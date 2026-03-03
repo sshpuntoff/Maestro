@@ -823,6 +823,8 @@ function MaestroConsoleInner() {
 		handleRenameGroupChatFromModal,
 		handleCloseEditGroupChatModal,
 		handleCloseGroupChatInfo,
+		startAutoRun,
+		stopAutoRun,
 	} = useGroupChatHandlers();
 
 	// --- MODAL HANDLERS (open/close, error recovery, lightbox, celebrations) ---
@@ -3115,6 +3117,8 @@ function MaestroConsoleInner() {
 								onTabChange={handleGroupChatRightTabChange}
 								onJumpToMessage={handleJumpToGroupChatMessage}
 								onColorsComputed={setGroupChatParticipantColors}
+								startAutoRun={startAutoRun}
+								stopAutoRun={stopAutoRun}
 							/>
 						</>
 					)}

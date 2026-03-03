@@ -57,6 +57,10 @@ interface GroupChatRightPanelProps {
 	onJumpToMessage?: (timestamp: number) => void;
 	/** Callback when participant colors are computed (for sharing with other components) */
 	onColorsComputed?: (colors: Record<string, string>) => void;
+	/** Auto-Run start callback from useGroupChatAutoRun */
+	startAutoRun: (groupChatId: string, folderPath: string, filename: string) => Promise<void>;
+	/** Auto-Run stop callback from useGroupChatAutoRun */
+	stopAutoRun: () => void;
 }
 
 export function GroupChatRightPanel({
@@ -80,6 +84,8 @@ export function GroupChatRightPanel({
 	onTabChange,
 	onJumpToMessage,
 	onColorsComputed,
+	startAutoRun,
+	stopAutoRun,
 }: GroupChatRightPanelProps): JSX.Element | null {
 	// Color preferences state
 	const [colorPreferences, setColorPreferences] = useState<Record<string, number>>({});
@@ -347,6 +353,8 @@ export function GroupChatRightPanel({
 				<GroupChatAutoRunTab
 					theme={theme}
 					groupChatId={groupChatId}
+					startAutoRun={startAutoRun}
+					stopAutoRun={stopAutoRun}
 				/>
 			)}
 		</div>

@@ -16,6 +16,18 @@ vi.mock('../../../renderer/stores/notificationStore', async () => {
 });
 import { notifyToast } from '../../../renderer/stores/notificationStore';
 
+// Mock useGroupChatAutoRun (now consumed by useGroupChatHandlers)
+const mockStartAutoRun = vi.fn().mockResolvedValue(undefined);
+const mockStopAutoRun = vi.fn();
+vi.mock('../../../renderer/hooks/groupChat/useGroupChatAutoRun', () => ({
+	useGroupChatAutoRun: () => ({
+		startAutoRun: mockStartAutoRun,
+		stopAutoRun: mockStopAutoRun,
+	}),
+	extractFirstUncheckedTask: vi.fn(),
+	markTaskCompleteInDoc: vi.fn(),
+}));
+
 // ---------------------------------------------------------------------------
 // Mock window.maestro.groupChat (not in global setup)
 // ---------------------------------------------------------------------------
@@ -29,6 +41,7 @@ const mockGroupChat = {
 	list: vi.fn().mockResolvedValue([]),
 	startModerator: vi.fn().mockResolvedValue('mod-session-1'),
 	sendToModerator: vi.fn().mockResolvedValue(undefined),
+	getAutoRunConfig: vi.fn().mockResolvedValue(null),
 	onMessage: vi.fn().mockReturnValue(() => {}),
 	onStateChange: vi.fn().mockReturnValue(() => {}),
 	onParticipantsChanged: vi.fn().mockReturnValue(() => {}),
@@ -55,6 +68,15 @@ const initialGroupChatState = {
 	groupChatParticipantColors: {},
 	groupChatStagedImages: [],
 	groupChatError: null,
+	groupChatAutoRunState: {
+		isRunning: false,
+		folderPath: null,
+		selectedFile: null,
+		totalTasks: 0,
+		completedTasks: 0,
+		currentTaskText: null,
+		error: null,
+	},
 };
 
 beforeEach(() => {
@@ -1213,6 +1235,86 @@ describe('useGroupChatHandlers', () => {
 
 			expect(useGroupChatStore.getState().groupChatRightTab).toBe('history');
 			expect(window.maestro.settings.set).not.toHaveBeenCalled();
+		});
+	});
+
+	// -----------------------------------------------------------------------
+	// Auto-Run integration
+	// -----------------------------------------------------------------------
+	describe('Auto-Run integration', () => {
+		it('exposes startAutoRun and stopAutoRun from useGroupChatAutoRun', () => {
+			const { result } = renderHook(() => useGroupChatHandlers());
+			expect(result.current.startAutoRun).toBe(mockStartAutoRun);
+			expect(result.current.stopAutoRun).toBe(mockStopAutoRun);
+		});
+
+		it('loads persisted Auto-Run config in handleOpenGroupChat', async () => {
+			const chat = { id: 'gc-1', name: 'Chat', participants: [] };
+			mockGroupChat.load.mockResolvedValueOnce(chat);
+			mockGroupChat.getMessages.mockResolvedValueOnce([]);
+			mockGroupChat.startModerator.mockResolvedValueOnce(null);
+			mockGroupChat.getAutoRunConfig.mockResolvedValueOnce({
+				folderPath: '/my/auto-run',
+				selectedFile: 'tasks',
+			});
+
+			const { result } = renderHook(() => useGroupChatHandlers());
+			await act(async () => {
+				await result.current.handleOpenGroupChat('gc-1');
+			});
+
+			expect(mockGroupChat.getAutoRunConfig).toHaveBeenCalledWith('gc-1');
+			const state = useGroupChatStore.getState().groupChatAutoRunState;
+			expect(state.folderPath).toBe('/my/auto-run');
+			expect(state.selectedFile).toBe('tasks');
+		});
+
+		it('handles missing Auto-Run config gracefully', async () => {
+			const chat = { id: 'gc-1', name: 'Chat', participants: [] };
+			mockGroupChat.load.mockResolvedValueOnce(chat);
+			mockGroupChat.getMessages.mockResolvedValueOnce([]);
+			mockGroupChat.startModerator.mockResolvedValueOnce(null);
+			mockGroupChat.getAutoRunConfig.mockResolvedValueOnce(null);
+
+			const { result } = renderHook(() => useGroupChatHandlers());
+			await act(async () => {
+				await result.current.handleOpenGroupChat('gc-1');
+			});
+
+			expect(mockGroupChat.getAutoRunConfig).toHaveBeenCalledWith('gc-1');
+			// Store state should not be modified when config is null
+			const state = useGroupChatStore.getState().groupChatAutoRunState;
+			expect(state.folderPath).toBeNull();
+			expect(state.selectedFile).toBeNull();
+		});
+
+		it('handles Auto-Run config load error gracefully', async () => {
+			const chat = { id: 'gc-1', name: 'Chat', participants: [] };
+			mockGroupChat.load.mockResolvedValueOnce(chat);
+			mockGroupChat.getMessages.mockResolvedValueOnce([]);
+			mockGroupChat.startModerator.mockResolvedValueOnce(null);
+			mockGroupChat.getAutoRunConfig.mockRejectedValueOnce(new Error('Storage error'));
+
+			const { result } = renderHook(() => useGroupChatHandlers());
+			await act(async () => {
+				await result.current.handleOpenGroupChat('gc-1');
+			});
+
+			// Should not crash — error is silently caught
+			expect(useGroupChatStore.getState().activeGroupChatId).toBe('gc-1');
+			const state = useGroupChatStore.getState().groupChatAutoRunState;
+			expect(state.folderPath).toBeNull();
+		});
+
+		it('does not load Auto-Run config when chat load returns null', async () => {
+			mockGroupChat.load.mockResolvedValueOnce(null);
+
+			const { result } = renderHook(() => useGroupChatHandlers());
+			await act(async () => {
+				await result.current.handleOpenGroupChat('gc-nonexistent');
+			});
+
+			expect(mockGroupChat.getAutoRunConfig).not.toHaveBeenCalled();
 		});
 	});
 });

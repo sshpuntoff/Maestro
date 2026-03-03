@@ -10,13 +10,14 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { FolderOpen, Play, Square, AlertTriangle, RefreshCw, Loader2 } from 'lucide-react';
 import type { Theme } from '../types';
 import { useGroupChatStore } from '../stores/groupChatStore';
-import { useGroupChatAutoRun } from '../hooks/groupChat';
 import { AutoRunSetupModal } from './AutoRunSetupModal';
 import { countUnfinishedTasks, countCheckedTasks } from '../hooks/batch/batchUtils';
 
 interface GroupChatAutoRunTabProps {
 	theme: Theme;
 	groupChatId: string;
+	startAutoRun: (groupChatId: string, folderPath: string, filename: string) => Promise<void>;
+	stopAutoRun: () => void;
 }
 
 /** Simple document entry with task counts for the document list. */
@@ -26,10 +27,7 @@ interface DocEntry {
 	total: number;
 }
 
-export function GroupChatAutoRunTab({ theme, groupChatId }: GroupChatAutoRunTabProps): JSX.Element {
-	// Auto-Run hook
-	const { startAutoRun, stopAutoRun } = useGroupChatAutoRun();
-
+export function GroupChatAutoRunTab({ theme, groupChatId, startAutoRun, stopAutoRun }: GroupChatAutoRunTabProps): JSX.Element {
 	// Store state
 	const autoRunState = useGroupChatStore((s) => s.groupChatAutoRunState);
 	const { isRunning, completedTasks, totalTasks, currentTaskText, error } = autoRunState;

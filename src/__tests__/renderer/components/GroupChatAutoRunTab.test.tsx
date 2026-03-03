@@ -4,15 +4,9 @@ import { GroupChatAutoRunTab } from '../../../renderer/components/GroupChatAutoR
 import { useGroupChatStore } from '../../../renderer/stores/groupChatStore';
 import type { Theme } from '../../../renderer/types';
 
-// Mock the useGroupChatAutoRun hook
+// Mock startAutoRun / stopAutoRun (now passed as props instead of via hook)
 const mockStartAutoRun = vi.fn().mockResolvedValue(undefined);
 const mockStopAutoRun = vi.fn();
-vi.mock('../../../renderer/hooks/groupChat', () => ({
-	useGroupChatAutoRun: () => ({
-		startAutoRun: mockStartAutoRun,
-		stopAutoRun: mockStopAutoRun,
-	}),
-}));
 
 // Mock AutoRunSetupModal
 let capturedOnFolderSelected: ((folderPath: string) => void) | null = null;
@@ -116,13 +110,13 @@ describe('GroupChatAutoRunTab', () => {
 	// ========================================================================
 	describe('empty state (no folder)', () => {
 		it('renders setup prompt when no folder is configured', () => {
-			render(<GroupChatAutoRunTab theme={mockTheme} groupChatId="gc-1" />);
+			render(<GroupChatAutoRunTab theme={mockTheme} groupChatId="gc-1" startAutoRun={mockStartAutoRun} stopAutoRun={mockStopAutoRun} />);
 			expect(screen.getByText('Set Up Auto Run')).toBeTruthy();
 			expect(screen.getByText(/Set up a folder/)).toBeTruthy();
 		});
 
 		it('opens setup modal when "Set Up Auto Run" is clicked', () => {
-			render(<GroupChatAutoRunTab theme={mockTheme} groupChatId="gc-1" />);
+			render(<GroupChatAutoRunTab theme={mockTheme} groupChatId="gc-1" startAutoRun={mockStartAutoRun} stopAutoRun={mockStopAutoRun} />);
 			fireEvent.click(screen.getByText('Set Up Auto Run'));
 			expect(screen.getByTestId('setup-modal')).toBeTruthy();
 		});
@@ -142,7 +136,7 @@ describe('GroupChatAutoRunTab', () => {
 				content: '- [ ] Task 1\n- [x] Task 2',
 			});
 
-			render(<GroupChatAutoRunTab theme={mockTheme} groupChatId="gc-1" />);
+			render(<GroupChatAutoRunTab theme={mockTheme} groupChatId="gc-1" startAutoRun={mockStartAutoRun} stopAutoRun={mockStopAutoRun} />);
 
 			await waitFor(() => {
 				expect(mockGroupChat.getAutoRunConfig).toHaveBeenCalledWith('gc-1');
@@ -171,7 +165,7 @@ describe('GroupChatAutoRunTab', () => {
 		});
 
 		it('shows folder path and document list after config loads', async () => {
-			render(<GroupChatAutoRunTab theme={mockTheme} groupChatId="gc-1" />);
+			render(<GroupChatAutoRunTab theme={mockTheme} groupChatId="gc-1" startAutoRun={mockStartAutoRun} stopAutoRun={mockStopAutoRun} />);
 
 			await waitFor(() => {
 				expect(screen.getByText('/test/autorun')).toBeTruthy();
@@ -184,7 +178,7 @@ describe('GroupChatAutoRunTab', () => {
 		});
 
 		it('shows "Documents" label', async () => {
-			render(<GroupChatAutoRunTab theme={mockTheme} groupChatId="gc-1" />);
+			render(<GroupChatAutoRunTab theme={mockTheme} groupChatId="gc-1" startAutoRun={mockStartAutoRun} stopAutoRun={mockStopAutoRun} />);
 
 			await waitFor(() => {
 				expect(screen.getByText('Documents')).toBeTruthy();
@@ -197,7 +191,7 @@ describe('GroupChatAutoRunTab', () => {
 				files: [],
 			});
 
-			render(<GroupChatAutoRunTab theme={mockTheme} groupChatId="gc-1" />);
+			render(<GroupChatAutoRunTab theme={mockTheme} groupChatId="gc-1" startAutoRun={mockStartAutoRun} stopAutoRun={mockStopAutoRun} />);
 
 			await waitFor(() => {
 				expect(screen.getByText('No markdown files found')).toBeTruthy();
@@ -205,7 +199,7 @@ describe('GroupChatAutoRunTab', () => {
 		});
 
 		it('selects a document and persists config', async () => {
-			render(<GroupChatAutoRunTab theme={mockTheme} groupChatId="gc-1" />);
+			render(<GroupChatAutoRunTab theme={mockTheme} groupChatId="gc-1" startAutoRun={mockStartAutoRun} stopAutoRun={mockStopAutoRun} />);
 
 			await waitFor(() => {
 				expect(screen.getByText('doc-a.md')).toBeTruthy();
@@ -222,7 +216,7 @@ describe('GroupChatAutoRunTab', () => {
 		});
 
 		it('shows Start button disabled when no document is selected', async () => {
-			render(<GroupChatAutoRunTab theme={mockTheme} groupChatId="gc-1" />);
+			render(<GroupChatAutoRunTab theme={mockTheme} groupChatId="gc-1" startAutoRun={mockStartAutoRun} stopAutoRun={mockStopAutoRun} />);
 
 			await waitFor(() => {
 				const startBtn = screen.getByText('Start');
@@ -252,7 +246,7 @@ describe('GroupChatAutoRunTab', () => {
 		});
 
 		it('calls startAutoRun when Start button is clicked', async () => {
-			render(<GroupChatAutoRunTab theme={mockTheme} groupChatId="gc-1" />);
+			render(<GroupChatAutoRunTab theme={mockTheme} groupChatId="gc-1" startAutoRun={mockStartAutoRun} stopAutoRun={mockStopAutoRun} />);
 
 			// Wait for config to load and select the document
 			await waitFor(() => {
@@ -285,7 +279,7 @@ describe('GroupChatAutoRunTab', () => {
 				},
 			});
 
-			render(<GroupChatAutoRunTab theme={mockTheme} groupChatId="gc-1" />);
+			render(<GroupChatAutoRunTab theme={mockTheme} groupChatId="gc-1" startAutoRun={mockStartAutoRun} stopAutoRun={mockStopAutoRun} />);
 
 			await waitFor(() => {
 				expect(screen.getByText('Stop')).toBeTruthy();
@@ -305,7 +299,7 @@ describe('GroupChatAutoRunTab', () => {
 				},
 			});
 
-			render(<GroupChatAutoRunTab theme={mockTheme} groupChatId="gc-1" />);
+			render(<GroupChatAutoRunTab theme={mockTheme} groupChatId="gc-1" startAutoRun={mockStartAutoRun} stopAutoRun={mockStopAutoRun} />);
 
 			await waitFor(() => {
 				fireEvent.click(screen.getByText('Stop'));
@@ -336,7 +330,7 @@ describe('GroupChatAutoRunTab', () => {
 				selectedFile: 'tasks',
 			});
 
-			render(<GroupChatAutoRunTab theme={mockTheme} groupChatId="gc-1" />);
+			render(<GroupChatAutoRunTab theme={mockTheme} groupChatId="gc-1" startAutoRun={mockStartAutoRun} stopAutoRun={mockStopAutoRun} />);
 
 			await waitFor(() => {
 				expect(screen.getByText('3')).toBeTruthy();
@@ -363,7 +357,7 @@ describe('GroupChatAutoRunTab', () => {
 				selectedFile: 'tasks',
 			});
 
-			render(<GroupChatAutoRunTab theme={mockTheme} groupChatId="gc-1" />);
+			render(<GroupChatAutoRunTab theme={mockTheme} groupChatId="gc-1" startAutoRun={mockStartAutoRun} stopAutoRun={mockStopAutoRun} />);
 
 			await waitFor(() => {
 				expect(screen.getByText('Current task:')).toBeTruthy();
@@ -391,7 +385,7 @@ describe('GroupChatAutoRunTab', () => {
 				selectedFile: 'tasks',
 			});
 
-			render(<GroupChatAutoRunTab theme={mockTheme} groupChatId="gc-1" />);
+			render(<GroupChatAutoRunTab theme={mockTheme} groupChatId="gc-1" startAutoRun={mockStartAutoRun} stopAutoRun={mockStopAutoRun} />);
 
 			await waitFor(() => {
 				const taskDisplay = screen.getByTitle(longText);
@@ -417,7 +411,7 @@ describe('GroupChatAutoRunTab', () => {
 				selectedFile: 'tasks',
 			});
 
-			render(<GroupChatAutoRunTab theme={mockTheme} groupChatId="gc-1" />);
+			render(<GroupChatAutoRunTab theme={mockTheme} groupChatId="gc-1" startAutoRun={mockStartAutoRun} stopAutoRun={mockStopAutoRun} />);
 
 			await waitFor(() => {
 				expect(screen.getByText('Progress')).toBeTruthy();
@@ -447,7 +441,7 @@ describe('GroupChatAutoRunTab', () => {
 				selectedFile: 'tasks',
 			});
 
-			render(<GroupChatAutoRunTab theme={mockTheme} groupChatId="gc-1" />);
+			render(<GroupChatAutoRunTab theme={mockTheme} groupChatId="gc-1" startAutoRun={mockStartAutoRun} stopAutoRun={mockStopAutoRun} />);
 
 			await waitFor(() => {
 				expect(screen.getByText('Auto Run Error')).toBeTruthy();
@@ -473,7 +467,7 @@ describe('GroupChatAutoRunTab', () => {
 				selectedFile: 'tasks',
 			});
 
-			render(<GroupChatAutoRunTab theme={mockTheme} groupChatId="gc-1" />);
+			render(<GroupChatAutoRunTab theme={mockTheme} groupChatId="gc-1" startAutoRun={mockStartAutoRun} stopAutoRun={mockStopAutoRun} />);
 
 			await waitFor(() => {
 				expect(screen.getByText('Retry')).toBeTruthy();
@@ -507,7 +501,7 @@ describe('GroupChatAutoRunTab', () => {
 				content: '- [ ] Task 1',
 			});
 
-			render(<GroupChatAutoRunTab theme={mockTheme} groupChatId="gc-1" />);
+			render(<GroupChatAutoRunTab theme={mockTheme} groupChatId="gc-1" startAutoRun={mockStartAutoRun} stopAutoRun={mockStopAutoRun} />);
 
 			await waitFor(() => {
 				expect(screen.getByText('Retry')).toBeTruthy();
@@ -538,7 +532,7 @@ describe('GroupChatAutoRunTab', () => {
 				files: [],
 			});
 
-			render(<GroupChatAutoRunTab theme={mockTheme} groupChatId="gc-1" />);
+			render(<GroupChatAutoRunTab theme={mockTheme} groupChatId="gc-1" startAutoRun={mockStartAutoRun} stopAutoRun={mockStopAutoRun} />);
 
 			await waitFor(() => {
 				expect(screen.getByText('/existing/folder')).toBeTruthy();
@@ -550,7 +544,7 @@ describe('GroupChatAutoRunTab', () => {
 		});
 
 		it('updates folder path on selection from setup modal', async () => {
-			render(<GroupChatAutoRunTab theme={mockTheme} groupChatId="gc-1" />);
+			render(<GroupChatAutoRunTab theme={mockTheme} groupChatId="gc-1" startAutoRun={mockStartAutoRun} stopAutoRun={mockStopAutoRun} />);
 
 			// Open setup modal from empty state
 			fireEvent.click(screen.getByText('Set Up Auto Run'));
@@ -570,7 +564,7 @@ describe('GroupChatAutoRunTab', () => {
 		});
 
 		it('closes setup modal on close button click', async () => {
-			render(<GroupChatAutoRunTab theme={mockTheme} groupChatId="gc-1" />);
+			render(<GroupChatAutoRunTab theme={mockTheme} groupChatId="gc-1" startAutoRun={mockStartAutoRun} stopAutoRun={mockStopAutoRun} />);
 
 			fireEvent.click(screen.getByText('Set Up Auto Run'));
 			expect(screen.getByTestId('setup-modal')).toBeTruthy();
@@ -612,7 +606,7 @@ describe('GroupChatAutoRunTab', () => {
 				content: '- [ ] Task 1',
 			});
 
-			render(<GroupChatAutoRunTab theme={mockTheme} groupChatId="gc-1" />);
+			render(<GroupChatAutoRunTab theme={mockTheme} groupChatId="gc-1" startAutoRun={mockStartAutoRun} stopAutoRun={mockStopAutoRun} />);
 
 			await waitFor(() => {
 				const folderBtn = screen.getByText('/test/folder').closest('button');
@@ -647,7 +641,7 @@ describe('GroupChatAutoRunTab', () => {
 				content: '- [ ] Task 1',
 			});
 
-			render(<GroupChatAutoRunTab theme={mockTheme} groupChatId="gc-1" />);
+			render(<GroupChatAutoRunTab theme={mockTheme} groupChatId="gc-1" startAutoRun={mockStartAutoRun} stopAutoRun={mockStopAutoRun} />);
 
 			await waitFor(() => {
 				const docBtn = screen.getByText('other-doc.md').closest('button');

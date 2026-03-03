@@ -16,6 +16,7 @@ import { useModalStore } from '../../stores/modalStore';
 import { useSessionStore } from '../../stores/sessionStore';
 import { useUIStore } from '../../stores/uiStore';
 import { useAgentErrorRecovery } from '../agent/useAgentErrorRecovery';
+import { useGroupChatAutoRun } from './useGroupChatAutoRun';
 import { notifyToast } from '../../stores/notificationStore';
 import { generateId } from '../../utils/ids';
 
@@ -92,6 +93,10 @@ export interface GroupChatHandlersReturn {
 	handleRenameGroupChatFromModal: (newName: string) => void;
 	handleCloseEditGroupChatModal: () => void;
 	handleCloseGroupChatInfo: () => void;
+
+	// Auto-Run
+	startAutoRun: (groupChatId: string, folderPath: string, filename: string) => Promise<void>;
+	stopAutoRun: () => void;
 }
 
 // ---------------------------------------------------------------------------
@@ -122,6 +127,9 @@ export function useGroupChatHandlers(): GroupChatHandlersReturn {
 	// --- Refs ---
 	const groupChatInputRef = useRef<HTMLTextAreaElement>(null);
 	const groupChatMessagesRef = useRef<GroupChatMessagesHandle>(null);
+
+	// --- Auto-Run hook ---
+	const { startAutoRun, stopAutoRun } = useGroupChatAutoRun();
 
 	// --- Reactive reads (for effects only) ---
 	const activeGroupChatId = useGroupChatStore((s) => s.activeGroupChatId);
@@ -341,6 +349,20 @@ export function useGroupChatHandlers(): GroupChatHandlersReturn {
 				setGroupChatRightTab(savedTab);
 			} else {
 				setGroupChatRightTab('participants'); // Default
+			}
+
+			// Load persisted Auto-Run config into store
+			try {
+				const autoRunConfig = await window.maestro.groupChat.getAutoRunConfig(id);
+				if (autoRunConfig) {
+					const { setGroupChatAutoRunState } = useGroupChatStore.getState();
+					setGroupChatAutoRunState({
+						folderPath: autoRunConfig.folderPath || null,
+						selectedFile: autoRunConfig.selectedFile || null,
+					});
+				}
+			} catch {
+				// Non-critical — Auto-Run config not available yet
 			}
 
 			// Start moderator if not running
@@ -696,5 +718,9 @@ export function useGroupChatHandlers(): GroupChatHandlersReturn {
 		handleRenameGroupChatFromModal,
 		handleCloseEditGroupChatModal,
 		handleCloseGroupChatInfo,
+
+		// Auto-Run
+		startAutoRun,
+		stopAutoRun,
 	};
 }
