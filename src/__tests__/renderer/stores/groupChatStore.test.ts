@@ -15,6 +15,7 @@ import {
 import type {
 	GroupChatRightTab,
 	GroupChatErrorState,
+	GroupChatAutoRunState,
 } from '../../../renderer/stores/groupChatStore';
 import type { GroupChat, GroupChatMessage, GroupChatState } from '../../../renderer/types';
 import type { QueuedItem } from '../../../renderer/types';
@@ -63,6 +64,16 @@ function createMockError(overrides: Partial<GroupChatErrorState> = {}): GroupCha
 	} as GroupChatErrorState;
 }
 
+const DEFAULT_AUTO_RUN_STATE: GroupChatAutoRunState = {
+	isRunning: false,
+	folderPath: null,
+	selectedFile: null,
+	totalTasks: 0,
+	completedTasks: 0,
+	currentTaskText: null,
+	error: null,
+};
+
 function resetStore() {
 	useGroupChatStore.setState({
 		groupChats: [],
@@ -79,6 +90,7 @@ function resetStore() {
 		groupChatParticipantColors: {},
 		groupChatStagedImages: [],
 		groupChatError: null,
+		groupChatAutoRunState: { ...DEFAULT_AUTO_RUN_STATE },
 	});
 }
 
@@ -112,6 +124,7 @@ describe('groupChatStore', () => {
 			expect(state.groupChatParticipantColors).toEqual({});
 			expect(state.groupChatStagedImages).toEqual([]);
 			expect(state.groupChatError).toBeNull();
+			expect(state.groupChatAutoRunState).toEqual(DEFAULT_AUTO_RUN_STATE);
 		});
 	});
 
@@ -409,17 +422,119 @@ describe('groupChatStore', () => {
 	});
 
 	// ==========================================================================
+	// Auto-Run state
+	// ==========================================================================
+
+	describe('Auto-Run state', () => {
+		it('has correct defaults', () => {
+			const { groupChatAutoRunState } = useGroupChatStore.getState();
+			expect(groupChatAutoRunState.isRunning).toBe(false);
+			expect(groupChatAutoRunState.folderPath).toBeNull();
+			expect(groupChatAutoRunState.selectedFile).toBeNull();
+			expect(groupChatAutoRunState.totalTasks).toBe(0);
+			expect(groupChatAutoRunState.completedTasks).toBe(0);
+			expect(groupChatAutoRunState.currentTaskText).toBeNull();
+			expect(groupChatAutoRunState.error).toBeNull();
+		});
+
+		it('partially updates with setGroupChatAutoRunState', () => {
+			useGroupChatStore.getState().setGroupChatAutoRunState({
+				isRunning: true,
+				folderPath: '/docs',
+				selectedFile: 'tasks.md',
+				totalTasks: 7,
+			});
+			const state = useGroupChatStore.getState().groupChatAutoRunState;
+			expect(state.isRunning).toBe(true);
+			expect(state.folderPath).toBe('/docs');
+			expect(state.selectedFile).toBe('tasks.md');
+			expect(state.totalTasks).toBe(7);
+			// Unset fields retain defaults
+			expect(state.completedTasks).toBe(0);
+			expect(state.currentTaskText).toBeNull();
+			expect(state.error).toBeNull();
+		});
+
+		it('merges subsequent partial updates', () => {
+			useGroupChatStore.getState().setGroupChatAutoRunState({
+				isRunning: true,
+				totalTasks: 5,
+			});
+			useGroupChatStore.getState().setGroupChatAutoRunState({
+				completedTasks: 2,
+				currentTaskText: 'Fix login bug',
+			});
+			const state = useGroupChatStore.getState().groupChatAutoRunState;
+			expect(state.isRunning).toBe(true);
+			expect(state.totalTasks).toBe(5);
+			expect(state.completedTasks).toBe(2);
+			expect(state.currentTaskText).toBe('Fix login bug');
+		});
+
+		it('sets error field', () => {
+			useGroupChatStore.getState().setGroupChatAutoRunState({
+				isRunning: true,
+				totalTasks: 3,
+			});
+			useGroupChatStore.getState().setGroupChatAutoRunState({
+				isRunning: false,
+				error: 'Moderator timed out',
+			});
+			const state = useGroupChatStore.getState().groupChatAutoRunState;
+			expect(state.isRunning).toBe(false);
+			expect(state.error).toBe('Moderator timed out');
+			expect(state.totalTasks).toBe(3); // preserved from prior update
+		});
+
+		it('resets with resetGroupChatAutoRunState', () => {
+			useGroupChatStore.getState().setGroupChatAutoRunState({
+				isRunning: true,
+				folderPath: '/docs',
+				selectedFile: 'tasks.md',
+				totalTasks: 10,
+				completedTasks: 5,
+				currentTaskText: 'Deploy service',
+				error: null,
+			});
+			useGroupChatStore.getState().resetGroupChatAutoRunState();
+			expect(useGroupChatStore.getState().groupChatAutoRunState).toEqual(
+				DEFAULT_AUTO_RUN_STATE
+			);
+		});
+
+		it('resetGroupChatAutoRunState does not affect other state', () => {
+			useGroupChatStore.getState().setActiveGroupChatId('gc-1');
+			useGroupChatStore.getState().setGroupChatAutoRunState({ isRunning: true });
+			useGroupChatStore.getState().resetGroupChatAutoRunState();
+			expect(useGroupChatStore.getState().activeGroupChatId).toBe('gc-1');
+		});
+
+		it('produces a new object reference on each partial update', () => {
+			const before = useGroupChatStore.getState().groupChatAutoRunState;
+			useGroupChatStore.getState().setGroupChatAutoRunState({ completedTasks: 1 });
+			const after = useGroupChatStore.getState().groupChatAutoRunState;
+			expect(before).not.toBe(after);
+		});
+	});
+
+	// ==========================================================================
 	// Convenience methods
 	// ==========================================================================
 
 	describe('convenience methods', () => {
-		it('resetGroupChatState clears active chat fields', () => {
+		it('resetGroupChatState clears active chat fields including Auto-Run', () => {
 			// Set up some active state
 			useGroupChatStore.getState().setActiveGroupChatId('gc-1');
 			useGroupChatStore.getState().setGroupChatMessages([createMockMessage()]);
 			useGroupChatStore.getState().setGroupChatState('moderator-thinking');
 			useGroupChatStore.getState().setParticipantStates(new Map([['Alice', 'working']]));
 			useGroupChatStore.getState().setGroupChatError(createMockError());
+			useGroupChatStore.getState().setGroupChatAutoRunState({
+				isRunning: true,
+				folderPath: '/some/path',
+				totalTasks: 5,
+				completedTasks: 2,
+			});
 
 			// Also set some state that should NOT be cleared
 			useGroupChatStore.getState().setGroupChats([createMockGroupChat()]);
@@ -435,6 +550,7 @@ describe('groupChatStore', () => {
 			expect(useGroupChatStore.getState().groupChatState).toBe('idle');
 			expect(useGroupChatStore.getState().participantStates).toEqual(new Map());
 			expect(useGroupChatStore.getState().groupChatError).toBeNull();
+			expect(useGroupChatStore.getState().groupChatAutoRunState).toEqual(DEFAULT_AUTO_RUN_STATE);
 
 			// Non-active fields should be preserved
 			expect(useGroupChatStore.getState().groupChats).toHaveLength(1);
@@ -502,6 +618,8 @@ describe('groupChatStore', () => {
 			expect(typeof actions.setGroupChatParticipantColors).toBe('function');
 			expect(typeof actions.setGroupChatStagedImages).toBe('function');
 			expect(typeof actions.setGroupChatError).toBe('function');
+			expect(typeof actions.setGroupChatAutoRunState).toBe('function');
+			expect(typeof actions.resetGroupChatAutoRunState).toBe('function');
 			expect(typeof actions.clearGroupChatError).toBe('function');
 			expect(typeof actions.resetGroupChatState).toBe('function');
 		});
@@ -534,6 +652,7 @@ describe('groupChatStore', () => {
 			useGroupChatStore.getState().setGroupChatState('agent-working');
 			useGroupChatStore.getState().setGroupChatError(createMockError());
 			useGroupChatStore.getState().setGroupChatRightTab('history');
+			useGroupChatStore.getState().setGroupChatAutoRunState({ isRunning: true, totalTasks: 3 });
 
 			// Reset
 			resetStore();
@@ -554,6 +673,7 @@ describe('groupChatStore', () => {
 			expect(state.groupChatParticipantColors).toEqual({});
 			expect(state.groupChatStagedImages).toEqual([]);
 			expect(state.groupChatError).toBeNull();
+			expect(state.groupChatAutoRunState).toEqual(DEFAULT_AUTO_RUN_STATE);
 		});
 	});
 });

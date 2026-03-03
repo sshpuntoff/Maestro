@@ -30,6 +30,27 @@ export interface GroupChatErrorState {
 	participantName?: string;
 }
 
+/** Auto-Run state for the active group chat. Flat on store — only one chat runs Auto-Run at a time. */
+export interface GroupChatAutoRunState {
+	isRunning: boolean;
+	folderPath: string | null;
+	selectedFile: string | null;
+	totalTasks: number;
+	completedTasks: number;
+	currentTaskText: string | null;
+	error: string | null;
+}
+
+const DEFAULT_GROUP_CHAT_AUTO_RUN_STATE: GroupChatAutoRunState = {
+	isRunning: false,
+	folderPath: null,
+	selectedFile: null,
+	totalTasks: 0,
+	completedTasks: 0,
+	currentTaskText: null,
+	error: null,
+};
+
 export interface GroupChatStoreState {
 	// Entity data
 	groupChats: GroupChat[];
@@ -56,6 +77,9 @@ export interface GroupChatStoreState {
 
 	// Error
 	groupChatError: GroupChatErrorState | null;
+
+	// Auto-Run
+	groupChatAutoRunState: GroupChatAutoRunState;
 }
 
 export interface GroupChatStoreActions {
@@ -117,10 +141,16 @@ export interface GroupChatStoreActions {
 			| ((prev: GroupChatErrorState | null) => GroupChatErrorState | null)
 	) => void;
 
+	// Auto-Run
+	/** Partially update group chat Auto-Run state (merges with current). */
+	setGroupChatAutoRunState: (partial: Partial<GroupChatAutoRunState>) => void;
+	/** Reset group chat Auto-Run state to defaults. */
+	resetGroupChatAutoRunState: () => void;
+
 	// Convenience methods
 	/** Clear the current error. Focus side-effect (ref.focus) must be handled by caller. */
 	clearGroupChatError: () => void;
-	/** Reset active chat state (close chat). Clears activeGroupChatId, messages, state, participants, error. */
+	/** Reset active chat state (close chat). Clears activeGroupChatId, messages, state, participants, error, Auto-Run. */
 	resetGroupChatState: () => void;
 }
 
@@ -157,6 +187,7 @@ export const useGroupChatStore = create<GroupChatStore>()((set) => ({
 	groupChatParticipantColors: {},
 	groupChatStagedImages: [],
 	groupChatError: null,
+	groupChatAutoRunState: { ...DEFAULT_GROUP_CHAT_AUTO_RUN_STATE },
 
 	// --- Actions ---
 	setGroupChats: (v) => set((s) => ({ groupChats: resolve(v, s.groupChats) })),
@@ -181,6 +212,11 @@ export const useGroupChatStore = create<GroupChatStore>()((set) => ({
 		set((s) => ({ groupChatStagedImages: resolve(v, s.groupChatStagedImages) })),
 	setGroupChatError: (v) => set((s) => ({ groupChatError: resolve(v, s.groupChatError) })),
 
+	setGroupChatAutoRunState: (partial) =>
+		set((s) => ({ groupChatAutoRunState: { ...s.groupChatAutoRunState, ...partial } })),
+	resetGroupChatAutoRunState: () =>
+		set({ groupChatAutoRunState: { ...DEFAULT_GROUP_CHAT_AUTO_RUN_STATE } }),
+
 	clearGroupChatError: () => set({ groupChatError: null }),
 
 	resetGroupChatState: () =>
@@ -190,6 +226,7 @@ export const useGroupChatStore = create<GroupChatStore>()((set) => ({
 			groupChatState: 'idle' as GroupChatState,
 			participantStates: new Map(),
 			groupChatError: null,
+			groupChatAutoRunState: { ...DEFAULT_GROUP_CHAT_AUTO_RUN_STATE },
 		}),
 }));
 
@@ -225,6 +262,8 @@ export function getGroupChatActions() {
 		setGroupChatParticipantColors: state.setGroupChatParticipantColors,
 		setGroupChatStagedImages: state.setGroupChatStagedImages,
 		setGroupChatError: state.setGroupChatError,
+		setGroupChatAutoRunState: state.setGroupChatAutoRunState,
+		resetGroupChatAutoRunState: state.resetGroupChatAutoRunState,
 		clearGroupChatError: state.clearGroupChatError,
 		resetGroupChatState: state.resetGroupChatState,
 	};
