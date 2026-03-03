@@ -361,6 +361,22 @@ describe('groupChatStore', () => {
 			expect(useGroupChatStore.getState().groupChatRightTab).toBe('participants');
 		});
 
+		it('sets right tab to auto-run', () => {
+			useGroupChatStore.getState().setGroupChatRightTab('auto-run');
+			expect(useGroupChatStore.getState().groupChatRightTab).toBe('auto-run');
+		});
+
+		it('cycles through all tab values including auto-run', () => {
+			useGroupChatStore.getState().setGroupChatRightTab('participants');
+			expect(useGroupChatStore.getState().groupChatRightTab).toBe('participants');
+			useGroupChatStore.getState().setGroupChatRightTab('history');
+			expect(useGroupChatStore.getState().groupChatRightTab).toBe('history');
+			useGroupChatStore.getState().setGroupChatRightTab('auto-run');
+			expect(useGroupChatStore.getState().groupChatRightTab).toBe('auto-run');
+			useGroupChatStore.getState().setGroupChatRightTab('participants');
+			expect(useGroupChatStore.getState().groupChatRightTab).toBe('participants');
+		});
+
 		it('sets participant colors', () => {
 			const colors = { Alice: '#ff0000', Bob: '#00ff00' };
 			useGroupChatStore.getState().setGroupChatParticipantColors(colors);

@@ -12,6 +12,7 @@ import type { Theme, GroupChatParticipant, SessionState, Shortcut } from '../typ
 import type { GroupChatHistoryEntry } from '../../shared/group-chat-types';
 import { ParticipantCard } from './ParticipantCard';
 import { GroupChatHistoryPanel } from './GroupChatHistoryPanel';
+import { GroupChatAutoRunTab } from './GroupChatAutoRunTab';
 import { formatShortcutKeys } from '../utils/shortcutFormatter';
 import {
 	buildParticipantColorMapWithPreferences,
@@ -21,7 +22,7 @@ import {
 } from '../utils/participantColors';
 import { useResizablePanel } from '../hooks';
 
-export type GroupChatRightTab = 'participants' | 'history';
+export type GroupChatRightTab = 'participants' | 'history' | 'auto-run';
 
 interface GroupChatRightPanelProps {
 	theme: Theme;
@@ -260,7 +261,7 @@ export function GroupChatRightPanel({
 
 			{/* Tab Header - matches RightPanel styling */}
 			<div className="flex border-b h-16" style={{ borderColor: theme.colors.border }}>
-				{(['participants', 'history'] as const).map((tab) => (
+				{(['participants', 'history', 'auto-run'] as const).map((tab) => (
 					<button
 						key={tab}
 						onClick={() => onTabChange(tab)}
@@ -269,9 +270,15 @@ export function GroupChatRightPanel({
 							borderColor: activeTab === tab ? theme.colors.accent : 'transparent',
 							color: activeTab === tab ? theme.colors.textMain : theme.colors.textDim,
 						}}
-						title={tab === 'participants' ? 'View participants' : 'View task history'}
+						title={
+							tab === 'participants'
+								? 'View participants'
+								: tab === 'history'
+									? 'View task history'
+									: 'Auto Run tasks'
+						}
 					>
-						{tab.charAt(0).toUpperCase() + tab.slice(1)}
+						{tab === 'auto-run' ? 'Auto Run' : tab.charAt(0).toUpperCase() + tab.slice(1)}
 					</button>
 				))}
 
@@ -327,7 +334,7 @@ export function GroupChatRightPanel({
 						})
 					)}
 				</div>
-			) : (
+			) : activeTab === 'history' ? (
 				<GroupChatHistoryPanel
 					theme={theme}
 					groupChatId={groupChatId}
@@ -335,6 +342,11 @@ export function GroupChatRightPanel({
 					isLoading={isLoadingHistory}
 					participantColors={participantColors}
 					onJumpToMessage={onJumpToMessage}
+				/>
+			) : (
+				<GroupChatAutoRunTab
+					theme={theme}
+					groupChatId={groupChatId}
 				/>
 			)}
 		</div>

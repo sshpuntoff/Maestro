@@ -337,7 +337,7 @@ export function useGroupChatHandlers(): GroupChatHandlersReturn {
 
 			// Load saved right tab preference for this group chat
 			const savedTab = await window.maestro.settings.get(`groupChatRightTab:${id}`);
-			if (savedTab === 'participants' || savedTab === 'history') {
+			if (savedTab === 'participants' || savedTab === 'history' || savedTab === 'auto-run') {
 				setGroupChatRightTab(savedTab);
 			} else {
 				setGroupChatRightTab('participants'); // Default
