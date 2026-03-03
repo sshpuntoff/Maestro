@@ -184,6 +184,24 @@ export function useGroupChatAutoRun(): UseGroupChatAutoRunReturn {
 			});
 			removePowerLock();
 			stopTimeoutChecker();
+
+			// Emit completion summary toast and system message
+			const { groupChats, groupChatAutoRunState: runState } = useGroupChatStore.getState();
+			const chatName = groupChats.find((c) => c.id === groupChatId)?.name || 'group chat';
+			const isAllComplete = completed === total;
+
+			notifyToast({
+				type: isAllComplete ? 'success' : 'warning',
+				title: 'Auto Run Complete',
+				message: `Auto Run complete: ${completed}/${total} tasks completed in ${chatName}`,
+			});
+
+			// Log system message in chat transcript
+			const docFilename = runState.selectedFile || filename;
+			window.maestro.groupChat
+				.appendMessage(groupChatId, '[Auto Run]', `Completed ${completed}/${total} tasks from ${docFilename}`)
+				.catch(() => {}); // Best-effort — don't fail the completion flow
+
 			return;
 		}
 
