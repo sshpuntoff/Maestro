@@ -452,7 +452,7 @@ export function registerGroupChatHandlers(deps: GroupChatHandlerDependencies): v
 		'groupChat:sendToModerator',
 		withIpcErrorLogging(
 			handlerOpts('sendToModerator'),
-			async (id: string, message: string, images?: string[], readOnly?: boolean): Promise<void> => {
+			async (id: string, message: string, images?: string[], readOnly?: boolean, options?: { isAutoRunTask?: boolean }): Promise<void> => {
 				console.log(`[GroupChat:Debug] ========== USER MESSAGE RECEIVED ==========`);
 				console.log(`[GroupChat:Debug] Group Chat ID: ${id}`);
 				console.log(
@@ -460,6 +460,7 @@ export function registerGroupChatHandlers(deps: GroupChatHandlerDependencies): v
 				);
 				console.log(`[GroupChat:Debug] Read-only: ${readOnly ?? false}`);
 				console.log(`[GroupChat:Debug] Images: ${images?.length ?? 0}`);
+				console.log(`[GroupChat:Debug] Auto-Run task: ${options?.isAutoRunTask ?? false}`);
 
 				const processManager = getProcessManager();
 				const agentDetector = getAgentDetector();
@@ -473,7 +474,8 @@ export function registerGroupChatHandlers(deps: GroupChatHandlerDependencies): v
 					message,
 					processManager ?? undefined,
 					agentDetector ?? undefined,
-					readOnly
+					readOnly,
+					options?.isAutoRunTask
 				);
 
 				console.log(`[GroupChat:Debug] User message routed to moderator`);
@@ -483,6 +485,7 @@ export function registerGroupChatHandlers(deps: GroupChatHandlerDependencies): v
 					messageLength: message.length,
 					imageCount: images?.length ?? 0,
 					readOnly: readOnly ?? false,
+					isAutoRunTask: options?.isAutoRunTask ?? false,
 				});
 			}
 		)

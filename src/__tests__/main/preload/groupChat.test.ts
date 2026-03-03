@@ -234,7 +234,8 @@ describe('GroupChat Preload API', () => {
 					'gc-123',
 					'Please coordinate',
 					undefined,
-					false
+					false,
+					undefined
 				);
 			});
 
@@ -248,7 +249,23 @@ describe('GroupChat Preload API', () => {
 					'gc-123',
 					'Message',
 					['image1.png'],
-					true
+					true,
+					undefined
+				);
+			});
+
+			it('should invoke with isAutoRunTask option', async () => {
+				mockInvoke.mockResolvedValue(undefined);
+
+				await api.sendToModerator('gc-123', 'Auto task', undefined, false, { isAutoRunTask: true });
+
+				expect(mockInvoke).toHaveBeenCalledWith(
+					'groupChat:sendToModerator',
+					'gc-123',
+					'Auto task',
+					undefined,
+					false,
+					{ isAutoRunTask: true }
 				);
 			});
 		});

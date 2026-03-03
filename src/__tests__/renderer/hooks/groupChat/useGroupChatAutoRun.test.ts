@@ -145,7 +145,7 @@ describe('useGroupChatAutoRun', () => {
 				await result.current.startAutoRun('gc-1', '/docs', 'tasks.md');
 			});
 
-			expect(mockSendToModerator).toHaveBeenCalledWith('gc-1', 'First open task');
+			expect(mockSendToModerator).toHaveBeenCalledWith('gc-1', 'First open task', undefined, undefined, { isAutoRunTask: true });
 			expect(useGroupChatStore.getState().groupChatAutoRunState.currentTaskText).toBe(
 				'First open task'
 			);

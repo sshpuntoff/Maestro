@@ -79,9 +79,8 @@ export function useGroupChatAutoRun(): UseGroupChatAutoRunReturn {
 			completedTasks: completed,
 		});
 
-		// Send task to moderator via existing IPC path.
-		// Note: `isAutoRunTask` flag will be wired in Phase 2 follow-up task.
-		await window.maestro.groupChat.sendToModerator(groupChatId, taskText);
+		// Send task to moderator with Auto-Run flag so router uses Auto-Run prompts
+		await window.maestro.groupChat.sendToModerator(groupChatId, taskText, undefined, undefined, { isAutoRunTask: true });
 	}, []);
 
 	/**

@@ -801,7 +801,8 @@ describe('groupChat IPC handlers', () => {
 				'Hello moderator',
 				mockProcessManager,
 				mockAgentDetector,
-				false
+				false,
+				undefined
 			);
 		});
 
@@ -816,7 +817,40 @@ describe('groupChat IPC handlers', () => {
 				'Analyze this',
 				mockProcessManager,
 				mockAgentDetector,
+				true,
+				undefined
+			);
+		});
+
+		it('should pass isAutoRunTask flag from options', async () => {
+			vi.mocked(groupChatRouter.routeUserMessage).mockResolvedValue(undefined);
+
+			const handler = handlers.get('groupChat:sendToModerator');
+			await handler!({} as any, 'gc-autorun', 'Implement login', undefined, false, { isAutoRunTask: true });
+
+			expect(groupChatRouter.routeUserMessage).toHaveBeenCalledWith(
+				'gc-autorun',
+				'Implement login',
+				mockProcessManager,
+				mockAgentDetector,
+				false,
 				true
+			);
+		});
+
+		it('should pass undefined isAutoRunTask when options omitted', async () => {
+			vi.mocked(groupChatRouter.routeUserMessage).mockResolvedValue(undefined);
+
+			const handler = handlers.get('groupChat:sendToModerator');
+			await handler!({} as any, 'gc-no-opts', 'Regular message', undefined, false);
+
+			expect(groupChatRouter.routeUserMessage).toHaveBeenCalledWith(
+				'gc-no-opts',
+				'Regular message',
+				mockProcessManager,
+				mockAgentDetector,
+				false,
+				undefined
 			);
 		});
 	});

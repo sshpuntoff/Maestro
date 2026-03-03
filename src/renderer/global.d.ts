@@ -1745,7 +1745,8 @@ interface MaestroAPI {
 			id: string,
 			message: string,
 			images?: string[],
-			readOnly?: boolean
+			readOnly?: boolean,
+			options?: { isAutoRunTask?: boolean }
 		) => Promise<void>;
 		stopModerator: (id: string) => Promise<void>;
 		getModeratorSessionId: (id: string) => Promise<string | null>;

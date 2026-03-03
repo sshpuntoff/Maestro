@@ -114,8 +114,8 @@ export function createGroupChatApi() {
 		// Moderator
 		startModerator: (id: string) => ipcRenderer.invoke('groupChat:startModerator', id),
 
-		sendToModerator: (id: string, message: string, images?: string[], readOnly?: boolean) =>
-			ipcRenderer.invoke('groupChat:sendToModerator', id, message, images, readOnly),
+		sendToModerator: (id: string, message: string, images?: string[], readOnly?: boolean, options?: { isAutoRunTask?: boolean }) =>
+			ipcRenderer.invoke('groupChat:sendToModerator', id, message, images, readOnly, options),
 
 		stopModerator: (id: string) => ipcRenderer.invoke('groupChat:stopModerator', id),
 
