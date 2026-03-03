@@ -405,6 +405,82 @@ describe('group-chat-storage', () => {
 			// Clean up
 			await deleteGroupChat(chat.id);
 		});
+
+		it('persists autoRun config via updateGroupChat', async () => {
+			const chat = await createGroupChat('AutoRun Config', 'claude-code');
+
+			const updated = await updateGroupChat(chat.id, {
+				autoRun: {
+					folderPath: '/path/to/docs',
+					selectedFile: 'tasks.md',
+				},
+			});
+
+			expect(updated.autoRun).toEqual({
+				folderPath: '/path/to/docs',
+				selectedFile: 'tasks.md',
+			});
+
+			// Verify persisted via loadGroupChat
+			const loaded = await loadGroupChat(chat.id);
+			expect(loaded!.autoRun).toEqual({
+				folderPath: '/path/to/docs',
+				selectedFile: 'tasks.md',
+			});
+
+			// Clean up
+			await deleteGroupChat(chat.id);
+		});
+
+		it('persists partial autoRun config (folderPath only)', async () => {
+			const chat = await createGroupChat('AutoRun Partial', 'claude-code');
+
+			const updated = await updateGroupChat(chat.id, {
+				autoRun: {
+					folderPath: '/some/folder',
+				},
+			});
+
+			expect(updated.autoRun).toEqual({ folderPath: '/some/folder' });
+
+			const loaded = await loadGroupChat(chat.id);
+			expect(loaded!.autoRun!.folderPath).toBe('/some/folder');
+			expect(loaded!.autoRun!.selectedFile).toBeUndefined();
+
+			// Clean up
+			await deleteGroupChat(chat.id);
+		});
+
+		it('clears autoRun config by setting undefined', async () => {
+			const chat = await createGroupChat('AutoRun Clear', 'claude-code');
+
+			// Set config
+			await updateGroupChat(chat.id, {
+				autoRun: { folderPath: '/path', selectedFile: 'file.md' },
+			});
+
+			// Clear config
+			const updated = await updateGroupChat(chat.id, { autoRun: undefined });
+			expect(updated.autoRun).toBeUndefined();
+
+			const loaded = await loadGroupChat(chat.id);
+			expect(loaded!.autoRun).toBeUndefined();
+
+			// Clean up
+			await deleteGroupChat(chat.id);
+		});
+
+		it('loads group chat without autoRun field (backward compat)', async () => {
+			const chat = await createGroupChat('No AutoRun', 'claude-code');
+
+			// The chat was created without autoRun — loadGroupChat should work fine
+			const loaded = await loadGroupChat(chat.id);
+			expect(loaded).not.toBeNull();
+			expect(loaded!.autoRun).toBeUndefined();
+
+			// Clean up
+			await deleteGroupChat(chat.id);
+		});
 	});
 
 	// ===========================================================================

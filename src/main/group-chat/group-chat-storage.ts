@@ -15,7 +15,11 @@ import { app } from 'electron';
 import Store from 'electron-store';
 import { v4 as uuidv4 } from 'uuid';
 import type { ToolType } from '../../shared/types';
-import type { ModeratorConfig, GroupChatHistoryEntry } from '../../shared/group-chat-types';
+import type {
+	ModeratorConfig,
+	GroupChatHistoryEntry,
+	GroupChatAutoRunConfig,
+} from '../../shared/group-chat-types';
 
 /**
  * Valid agent IDs that can be used as moderators.
@@ -129,6 +133,8 @@ export interface GroupChat {
 	logPath: string;
 	imagesDir: string;
 	archived?: boolean;
+	/** Auto-Run configuration (folder path and selected document) */
+	autoRun?: GroupChatAutoRunConfig;
 }
 
 /**
@@ -145,6 +151,7 @@ export type GroupChatUpdate = Partial<
 		| 'participants'
 		| 'updatedAt'
 		| 'archived'
+		| 'autoRun'
 	>
 >;
 
